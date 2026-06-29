@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aquatics Dosing Calculator - Kimberly Sultz</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <header>
+    <nav>
+      <ul>
+        <li><a href="../index.html">Home</a></li>
+        <li><a href="index.html">Aquatics & Ops</a></li>
+        <li><a href="../crafts/index.html">Hobbies</a></li>
+        <li><a href="../travel/map.html">Travel Map</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <h1>Pool Dosing Calculator</h1>
+      <p style="text-align: center;">Instant offline chlorine dosing for aquatics staff.</p>
+
+      <div class="calculator-card">
+          <form id="dosing-form">
+              <!-- Dropdown for specific YMCA pools -->
+              <label for="pool-volume">Select Pool</label>
+              <select id="pool-volume" required>
+                  <option value="" disabled selected>Select a facility pool...</option>
+                  <option value="250000">Main Lap Pool (250,000 gal)</option>
+                  <option value="40000">Warm Water Therapy (40,000 gal)</option>
+                  <option value="5000">Family Spa (5,000 gal)</option>
+              </select>
+
+              <label for="current-ppm">Current Free Chlorine (PPM)</label>
+              <input type="number" id="current-ppm" step="0.1" placeholder="e.g., 1.5" required>
+
+              <label for="target-ppm">Target Free Chlorine (PPM)</label>
+              <input type="number" id="target-ppm" step="0.1" placeholder="e.g., 3.0" required>
+
+              <label for="chem-type">Chemical Used</label>
+              <select id="chem-type" required>
+                  <option value="calhypo">Calcium Hypochlorite (68% Granular)</option>
+                  <option value="liquid">Liquid Chlorine (12.5% Bleach)</option>
+              </select>
+
+              <button type="button" onclick="calculateDose()">Calculate Dose</button>
+          </form>
+
+          <div id="result-box">
+              <!-- JavaScript will inject the result here -->
+          </div>
+      </div>
+    </article>
+  </main>
+
+  <footer>
+    <p>&copy; 2026 Kimberly Sultz.</p>
+  </footer>
+
+  <script>
+      function calculateDose() {
+          // Retrieve inputs
+          const volume = parseFloat(document.getElementById('pool-volume').value);
+          const currentPPM = parseFloat(document.getElementById('current-ppm').value);
+          const targetPPM = parseFloat(document.getElementById('target-ppm').value);
+          const chemType = document.getElementById('chem-type').value;
+          const resultBox = document.getElementById('result-box');
+
+          // Input validation
+          if (!volume || isNaN(currentPPM) || isNaN(targetPPM)) {
+              resultBox.style.display = 'block';
+              resultBox.style.color = '#d62828';
+              resultBox.innerHTML = 'Please fill out all fields.';
+              return;
+          }
+
+          if (currentPPM >= targetPPM) {
+              resultBox.style.display = 'block';
+              resultBox.style.color = 'var(--text-color)';
+              resultBox.innerHTML = 'Current PPM is at or above target. No chemical needed.';
+              return;
+          }
+
+          // Calculations
+          // Formula basis: factors for raising 10,000 gallons by 1 PPM
+          const volumeFactor = volume / 10000;
+          const ppmChange = targetPPM - currentPPM;
+          
+          let amount = 0;
+          let unit = '';
+
+          if (chemType === 'calhypo') {
+              // ~2 oz of 68% Cal Hypo raises 10k gal by 1 PPM
+              amount = ppmChange * volumeFactor * 2;
+              
+              if (amount > 16) {
+                  const lbs = (amount / 16).toFixed(2);
+                  unit = `lbs (${Math.round(amount)} oz)`;
+                  amount = lbs;
+              } else {
+                  amount = Math.round(amount);
+                  unit = 'ounces';
+              }
+          } else if (chemType === 'liquid') {
+              // ~10.7 fl oz of 12.5% Liquid Chlorine raises 10k gal by 1 PPM
+              amount = ppmChange * volumeFactor * 10.7;
+              
+              if (amount > 128) {
+                  const gallons = (amount / 128).toFixed(2);
+                  unit = `gallons`;
+                  amount = gallons;
+              } else {
+                  amount = Math.round(amount);
+                  unit = 'fluid ounces';
+              }
+          }
+
+          // Display results
+          resultBox.style.display = 'block';
+          resultBox.style.color = 'var(--text-color)';
+          resultBox.innerHTML = `Add <strong>${amount} ${unit}</strong> to reach ${targetPPM} PPM.`;
+      }
+  </script>
+</body>
+</html>

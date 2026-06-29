@@ -5,6 +5,9 @@
   --table-border: #ddd;
   --table-row-even: #f9f9f9;
   --table-header-bg: #f2f2f2;
+  --accent: #005f73;
+  --input-bg: #f4f4f9;
+  --border: #cccccc;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -15,6 +18,9 @@
     --table-border: #444;
     --table-row-even: #2a2a2a;
     --table-header-bg: #333;
+    --accent: #94d2bd;
+    --input-bg: #2d2d2d;
+    --border: #444444;
   }
 }
 
@@ -143,4 +149,60 @@ details[open] summary {
   ul.checklist li::before {
     content: "☐ ";
   }
+}
+
+/* Calculator Styles */
+.calculator-card {
+  background-color: var(--input-bg);
+  padding: 1.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+label {
+  display: block;
+  margin-top: 1rem;
+  font-weight: bold;
+}
+
+select, input {
+  width: 100%;
+  padding: 0.75rem;
+  margin-top: 0.5rem;
+  font-size: 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  box-sizing: border-box;
+}
+
+button {
+  width: 100%;
+  padding: 1rem;
+  margin-top: 1.5rem;
+  font-size: 1.2rem;
+  font-weight: bold;
+  background-color: var(--accent);
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+button:hover {
+  opacity: 0.9;
+}
+
+#result-box {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  text-align: center;
+  background-color: var(--bg-color);
+  border: 2px dashed var(--accent);
+  border-radius: 4px;
+  font-size: 1.2rem;
+  font-weight: bold;
+  display: none;
 }
