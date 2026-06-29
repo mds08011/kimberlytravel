@@ -13,6 +13,8 @@
             --accent-ph: #e76f51; /* pH Red */
             --input-bg: #f4f4f9;
             --border: #cccccc;
+            --select-text: #000000;
+            --select-bg: #ffffff;
         }
 
         @media (prefers-color-scheme: dark) {
@@ -24,6 +26,8 @@
                 --accent-ph: #f4a261;
                 --input-bg: #2d2d2d;
                 --border: #444444;
+                --select-text: #ffffff;
+                --select-bg: #000000;
             }
         }
 
@@ -80,6 +84,11 @@
             width: 100%; padding: 0.75rem; margin-top: 0.25rem; font-size: 1.1rem;
             border: 1px solid var(--border); border-radius: 4px;
             background-color: var(--bg-color); color: var(--text-color); box-sizing: border-box;
+        }
+        
+        select, option {
+            color: var(--select-text);
+            background-color: var(--select-bg);
         }
 
         button.calc-btn {
