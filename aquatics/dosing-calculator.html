@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aquatics Dosing Dashboard</title>
+    <title>Alphie's Calculator</title>
     <style>
         :root {
             --bg-color: #ffffff;
@@ -104,15 +104,16 @@
 <body>
 
     <main>
-        <h1>YMCA Water Balance</h1>
+        <h1>Alphie's Calculator</h1>
         
         <div class="global-pool-selector">
             <label for="pool-volume">1. Select Facility Pool</label>
             <select id="pool-volume" required>
                 <option value="" disabled selected>Select a pool...</option>
-                <option value="250000">Main Lap Pool (250,000 gal)</option>
-                <option value="40000">Warm Water Therapy (40,000 gal)</option>
-                <option value="5000">Family Spa (5,000 gal)</option>
+                <option value="315643">Competition Pool (315,643 gal)</option>
+                <option value="84200">Instructional Pool (84,200 gal)</option>
+                <option value="4100">Splash Pad (4,100 gal)</option>
+                <option value="2000">Spa (2,000 gal)</option>
             </select>
         </div>
 
@@ -136,7 +137,7 @@
             <div id="cl-result" class="result-box" style="border: 2px dashed var(--accent-cl);"></div>
             
             <div class="info-panel" style="border-color: var(--accent-cl);">
-                <strong>ORP Reference:</strong> If your controller reads ORP, the YMCA standard is a minimum of <strong>700 mV to 750 mV</strong>. If ORP is low but PPM is high, check your Cyanuric Acid or pH!
+                <strong>ORP Reference:</strong> If your controller reads ORP, ensure it is within acceptable ranges. If ORP is low but PPM is high, check your Cyanuric Acid or pH!
             </div>
         </div>
 
@@ -149,7 +150,7 @@
             <div id="alk-result" class="result-box" style="border: 2px dashed var(--accent-alk);"></div>
             
             <div class="info-panel" style="border-color: var(--accent-alk);">
-                <strong>Rule of Thumb:</strong> Always fix Alkalinity BEFORE attempting to adjust pH. We use <strong>Sodium Bicarbonate (Baking Soda)</strong> to raise alkalinity.
+                <strong>Rule of Thumb:</strong> Always fix Alkalinity BEFORE attempting to adjust pH. We use <strong>Sodium Bicarbonate (Baking Soda)</strong> to raise Alkalinity.
             </div>
         </div>
 
@@ -249,7 +250,7 @@
 
             if (cur <= tar) { res.innerHTML = "pH is at or below target."; res.style.display = 'block'; return; }
 
-            // Rough YMCA standard estimates (highly dependent on alkalinity, hence "estimate")
+            // Rough standard estimates (highly dependent on Alkalinity, hence "estimate")
             const volFactor = vol / 10000;
             const drop = cur - tar;
             let amt = 0; let unit = '';
