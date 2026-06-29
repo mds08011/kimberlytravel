@@ -1,128 +1,274 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Aquatics Dosing Calculator - Kimberly Sultz</title>
-  <link rel="stylesheet" href="../style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aquatics Dosing Dashboard</title>
+    <style>
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #333333;
+            --accent-cl: #005f73; /* Chlorine Blue */
+            --accent-alk: #2a9d8f; /* Alkalinity Green */
+            --accent-ph: #e76f51; /* pH Red */
+            --input-bg: #f4f4f9;
+            --border: #cccccc;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-color: #1a1a1a;
+                --text-color: #e0e0e0;
+                --accent-cl: #48cae4;
+                --accent-alk: #81b29a;
+                --accent-ph: #f4a261;
+                --input-bg: #2d2d2d;
+                --border: #444444;
+            }
+        }
+
+        body {
+            font-family: system-ui, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            max-width: 65ch;
+            margin: 0 auto;
+            padding: 1rem;
+            line-height: 1.6;
+        }
+
+        h1, h2, h3 { text-align: center; }
+
+        /* Universal Pool Selector */
+        .global-pool-selector {
+            background-color: var(--input-bg);
+            padding: 1rem;
+            border-radius: 8px;
+            border: 2px solid var(--border);
+            margin-bottom: 1.5rem;
+        }
+
+        /* Native Tab System using CSS */
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .tab-btn {
+            flex: 1;
+            padding: 0.75rem;
+            font-weight: bold;
+            border: none;
+            border-radius: 4px;
+            background-color: var(--input-bg);
+            color: var(--text-color);
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+        }
+
+        .tab-btn.active[data-target="chlorine-tab"] { border-bottom-color: var(--accent-cl); }
+        .tab-btn.active[data-target="alkalinity-tab"] { border-bottom-color: var(--accent-alk); }
+        .tab-btn.active[data-target="ph-tab"] { border-bottom-color: var(--accent-ph); }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* Form Elements */
+        label { display: block; margin-top: 1rem; font-weight: bold; font-size: 0.9rem;}
+        select, input {
+            width: 100%; padding: 0.75rem; margin-top: 0.25rem; font-size: 1.1rem;
+            border: 1px solid var(--border); border-radius: 4px;
+            background-color: var(--bg-color); color: var(--text-color); box-sizing: border-box;
+        }
+
+        button.calc-btn {
+            width: 100%; padding: 1rem; margin-top: 1.5rem; font-size: 1.2rem;
+            font-weight: bold; color: #ffffff; border: none; border-radius: 4px; cursor: pointer;
+        }
+        #btn-cl { background-color: var(--accent-cl); }
+        #btn-alk { background-color: var(--accent-alk); }
+        #btn-ph { background-color: var(--accent-ph); }
+
+        .result-box {
+            margin-top: 1.5rem; padding: 1rem; text-align: center; background-color: var(--bg-color);
+            border-radius: 4px; font-size: 1.2rem; font-weight: bold; display: none;
+        }
+        
+        .info-panel {
+            background-color: var(--input-bg); font-size: 0.85rem; padding: 0.75rem;
+            border-left: 4px solid var(--accent-cl); margin-top: 1rem; border-radius: 0 4px 4px 0;
+        }
+    </style>
 </head>
 <body>
-  <header>
-    <nav>
-      <ul>
-        <li><a href="../index.html">Home</a></li>
-        <li><a href="index.html">Aquatics & Ops</a></li>
-        <li><a href="../crafts/index.html">Hobbies</a></li>
-        <li><a href="../travel/map.html">Travel Map</a></li>
-      </ul>
-    </nav>
-  </header>
 
-  <main>
-    <article>
-      <h1>Pool Dosing Calculator</h1>
-      <p style="text-align: center;">Instant offline chlorine dosing for aquatics staff.</p>
+    <main>
+        <h1>YMCA Water Balance</h1>
+        
+        <div class="global-pool-selector">
+            <label for="pool-volume">1. Select Facility Pool</label>
+            <select id="pool-volume" required>
+                <option value="" disabled selected>Select a pool...</option>
+                <option value="250000">Main Lap Pool (250,000 gal)</option>
+                <option value="40000">Warm Water Therapy (40,000 gal)</option>
+                <option value="5000">Family Spa (5,000 gal)</option>
+            </select>
+        </div>
 
-      <div class="calculator-card">
-          <form id="dosing-form">
-              <!-- Dropdown for specific YMCA pools -->
-              <label for="pool-volume">Select Pool</label>
-              <select id="pool-volume" required>
-                  <option value="" disabled selected>Select a facility pool...</option>
-                  <option value="250000">Main Lap Pool (250,000 gal)</option>
-                  <option value="40000">Warm Water Therapy (40,000 gal)</option>
-                  <option value="5000">Family Spa (5,000 gal)</option>
-              </select>
+        <div class="tabs">
+            <button class="tab-btn active" data-target="chlorine-tab" onclick="switchTab(this)">Sanitizer</button>
+            <button class="tab-btn" data-target="alkalinity-tab" onclick="switchTab(this)">Alkalinity</button>
+            <button class="tab-btn" data-target="ph-tab" onclick="switchTab(this)">pH Control</button>
+        </div>
 
-              <label for="current-ppm">Current Free Chlorine (PPM)</label>
-              <input type="number" id="current-ppm" step="0.1" placeholder="e.g., 1.5" required>
+        <div id="chlorine-tab" class="tab-content active">
+            <label>Current Free Chlorine (PPM)</label>
+            <input type="number" id="cl-current" step="0.1" placeholder="e.g., 1.5">
+            <label>Target Free Chlorine (PPM)</label>
+            <input type="number" id="cl-target" step="0.1" placeholder="e.g., 3.0">
+            <label>Chemical Type</label>
+            <select id="cl-chem">
+                <option value="calhypo">Calcium Hypochlorite (68%)</option>
+                <option value="liquid">Liquid Chlorine (12.5%)</option>
+            </select>
+            <button class="calc-btn" id="btn-cl" onclick="calculateCL()">Calculate Dose</button>
+            <div id="cl-result" class="result-box" style="border: 2px dashed var(--accent-cl);"></div>
+            
+            <div class="info-panel" style="border-color: var(--accent-cl);">
+                <strong>ORP Reference:</strong> If your controller reads ORP, the YMCA standard is a minimum of <strong>700 mV to 750 mV</strong>. If ORP is low but PPM is high, check your Cyanuric Acid or pH!
+            </div>
+        </div>
 
-              <label for="target-ppm">Target Free Chlorine (PPM)</label>
-              <input type="number" id="target-ppm" step="0.1" placeholder="e.g., 3.0" required>
+        <div id="alkalinity-tab" class="tab-content">
+            <label>Current Total Alkalinity (PPM)</label>
+            <input type="number" id="alk-current" step="10" placeholder="e.g., 60">
+            <label>Target Total Alkalinity (PPM)</label>
+            <input type="number" id="alk-target" step="10" placeholder="e.g., 100">
+            <button class="calc-btn" id="btn-alk" onclick="calculateAlk()">Calculate Bicarb Dose</button>
+            <div id="alk-result" class="result-box" style="border: 2px dashed var(--accent-alk);"></div>
+            
+            <div class="info-panel" style="border-color: var(--accent-alk);">
+                <strong>Rule of Thumb:</strong> Always fix Alkalinity BEFORE attempting to adjust pH. We use <strong>Sodium Bicarbonate (Baking Soda)</strong> to raise alkalinity.
+            </div>
+        </div>
 
-              <label for="chem-type">Chemical Used</label>
-              <select id="chem-type" required>
-                  <option value="calhypo">Calcium Hypochlorite (68% Granular)</option>
-                  <option value="liquid">Liquid Chlorine (12.5% Bleach)</option>
-              </select>
+        <div id="ph-tab" class="tab-content">
+            <label>Current pH</label>
+            <input type="number" id="ph-current" step="0.1" placeholder="e.g., 8.0">
+            <label>Target pH</label>
+            <input type="number" id="ph-target" step="0.1" placeholder="e.g., 7.4">
+            <label>Chemical to Lower pH</label>
+            <select id="ph-chem">
+                <option value="muriatic">Muriatic Acid (31.45% Liquid)</option>
+                <option value="dry">Dry Acid (Sodium Bisulfate)</option>
+            </select>
+            <button class="calc-btn" id="btn-ph" onclick="calculatePH()">Calculate Acid Dose</button>
+            <div id="ph-result" class="result-box" style="border: 2px dashed var(--accent-ph);"></div>
+            
+            <div class="info-panel" style="border-color: var(--accent-ph);">
+                <strong>Note on CO2:</strong> CO2 automatically lowers pH without adding total dissolved solids. If your CO2 is running but pH isn't dropping, check if the cylinder is empty or if Alkalinity is too high.
+            </div>
+        </div>
 
-              <button type="button" onclick="calculateDose()">Calculate Dose</button>
-          </form>
+    </main>
 
-          <div id="result-box">
-              <!-- JavaScript will inject the result here -->
-          </div>
-      </div>
-    </article>
-  </main>
+    <script>
+        // Tab Switching Logic
+        function switchTab(clickedBtn) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            clickedBtn.classList.add('active');
+            const targetId = clickedBtn.getAttribute('data-target');
+            document.getElementById(targetId).classList.add('active');
+        }
 
-  <footer>
-    <p>&copy; 2026 Kimberly Sultz.</p>
-  </footer>
+        // Helper to get volume
+        function getVolume() {
+            const vol = parseFloat(document.getElementById('pool-volume').value);
+            if (isNaN(vol)) {
+                alert("Please select a pool facility first.");
+                return null;
+            }
+            return vol;
+        }
 
-  <script>
-      function calculateDose() {
-          // Retrieve inputs
-          const volume = parseFloat(document.getElementById('pool-volume').value);
-          const currentPPM = parseFloat(document.getElementById('current-ppm').value);
-          const targetPPM = parseFloat(document.getElementById('target-ppm').value);
-          const chemType = document.getElementById('chem-type').value;
-          const resultBox = document.getElementById('result-box');
+        // 1. Chlorine Calculator
+        function calculateCL() {
+            const vol = getVolume(); if (!vol) return;
+            const cur = parseFloat(document.getElementById('cl-current').value);
+            const tar = parseFloat(document.getElementById('cl-target').value);
+            const chem = document.getElementById('cl-chem').value;
+            const res = document.getElementById('cl-result');
 
-          // Input validation
-          if (!volume || isNaN(currentPPM) || isNaN(targetPPM)) {
-              resultBox.style.display = 'block';
-              resultBox.style.color = '#d62828';
-              resultBox.innerHTML = 'Please fill out all fields.';
-              return;
-          }
+            if (cur >= tar) { res.innerHTML = "PPM is good. No dose needed."; res.style.display = 'block'; return; }
 
-          if (currentPPM >= targetPPM) {
-              resultBox.style.display = 'block';
-              resultBox.style.color = 'var(--text-color)';
-              resultBox.innerHTML = 'Current PPM is at or above target. No chemical needed.';
-              return;
-          }
+            const volFactor = vol / 10000;
+            const ppmChange = tar - cur;
+            let amt = 0; let unit = '';
 
-          // Calculations
-          // Formula basis: factors for raising 10,000 gallons by 1 PPM
-          const volumeFactor = volume / 10000;
-          const ppmChange = targetPPM - currentPPM;
-          
-          let amount = 0;
-          let unit = '';
+            if (chem === 'calhypo') {
+                amt = ppmChange * volFactor * 2; // 2 oz per 10k gal per 1 ppm
+                unit = amt > 16 ? `lbs (${Math.round(amt)} oz)` : 'ounces';
+                amt = amt > 16 ? (amt/16).toFixed(2) : Math.round(amt);
+            } else {
+                amt = ppmChange * volFactor * 10.7; // 10.7 fl oz per 10k gal per 1 ppm
+                unit = amt > 128 ? `gallons` : 'fluid ounces';
+                amt = amt > 128 ? (amt/128).toFixed(2) : Math.round(amt);
+            }
+            res.innerHTML = `Add <strong>${amt} ${unit}</strong> of Chlorine.`;
+            res.style.display = 'block';
+        }
 
-          if (chemType === 'calhypo') {
-              // ~2 oz of 68% Cal Hypo raises 10k gal by 1 PPM
-              amount = ppmChange * volumeFactor * 2;
-              
-              if (amount > 16) {
-                  const lbs = (amount / 16).toFixed(2);
-                  unit = `lbs (${Math.round(amount)} oz)`;
-                  amount = lbs;
-              } else {
-                  amount = Math.round(amount);
-                  unit = 'ounces';
-              }
-          } else if (chemType === 'liquid') {
-              // ~10.7 fl oz of 12.5% Liquid Chlorine raises 10k gal by 1 PPM
-              amount = ppmChange * volumeFactor * 10.7;
-              
-              if (amount > 128) {
-                  const gallons = (amount / 128).toFixed(2);
-                  unit = `gallons`;
-                  amount = gallons;
-              } else {
-                  amount = Math.round(amount);
-                  unit = 'fluid ounces';
-              }
-          }
+        // 2. Alkalinity Calculator (Sodium Bicarbonate)
+        function calculateAlk() {
+            const vol = getVolume(); if (!vol) return;
+            const cur = parseFloat(document.getElementById('alk-current').value);
+            const tar = parseFloat(document.getElementById('alk-target').value);
+            const res = document.getElementById('alk-result');
 
-          // Display results
-          resultBox.style.display = 'block';
-          resultBox.style.color = 'var(--text-color)';
-          resultBox.innerHTML = `Add <strong>${amount} ${unit}</strong> to reach ${targetPPM} PPM.`;
-      }
-  </script>
+            if (cur >= tar) { res.innerHTML = "Alkalinity is good."; res.style.display = 'block'; return; }
+
+            // 1.4 lbs Bicarb raises 10,000 gal by 10 ppm
+            const volFactor = vol / 10000;
+            const ppmChange = tar - cur;
+            let lbs = (ppmChange / 10) * 1.4 * volFactor;
+            
+            res.innerHTML = `Add <strong>${lbs.toFixed(2)} lbs</strong> of Sodium Bicarbonate.`;
+            res.style.display = 'block';
+        }
+
+        // 3. pH Calculator (Estimates for lowering pH)
+        function calculatePH() {
+            const vol = getVolume(); if (!vol) return;
+            const cur = parseFloat(document.getElementById('ph-current').value);
+            const tar = parseFloat(document.getElementById('ph-target').value);
+            const chem = document.getElementById('ph-chem').value;
+            const res = document.getElementById('ph-result');
+
+            if (cur <= tar) { res.innerHTML = "pH is at or below target."; res.style.display = 'block'; return; }
+
+            // Rough YMCA standard estimates (highly dependent on alkalinity, hence "estimate")
+            const volFactor = vol / 10000;
+            const drop = cur - tar;
+            let amt = 0; let unit = '';
+
+            if (chem === 'muriatic') {
+                // ~12 fl oz Muriatic Acid lowers pH by 0.2 per 10k gal
+                amt = (drop / 0.2) * 12 * volFactor;
+                unit = amt > 128 ? 'gallons' : 'fluid ounces';
+                amt = amt > 128 ? (amt/128).toFixed(2) : Math.round(amt);
+            } else {
+                // ~1 lb Dry Acid lowers pH by 0.2 per 10k gal
+                amt = (drop / 0.2) * 1 * volFactor;
+                unit = 'lbs';
+                amt = amt.toFixed(2);
+            }
+            
+            res.innerHTML = `Add <strong>${amt} ${unit}</strong> to lower pH.<br><span style="font-size:0.9rem; font-weight:normal;">*Estimate only. Add in stages.</span>`;
+            res.style.display = 'block';
+        }
+    </script>
 </body>
 </html>
