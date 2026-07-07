@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Digitizing Knitting Progress with a Local Storage Stitch Tracker | Kimberly Sultz</title>
+  <title>Digitizing Knitting Progress with a Local Storage Stitch Tracker</title>
   <link rel="stylesheet" href="../../style.css">
 </head>
 <body>
@@ -12,6 +12,7 @@
       <ul>
         <li><a href="../../index.html">Home</a></li>
         <li><a href="../../travelmap/">Travel Map</a></li>
+        <li><a href="../index.html">Blog</a></li>
       </ul>
     </nav>
   </header>
@@ -19,18 +20,24 @@
   <main>
     <article>
       <h1>Digitizing Knitting Progress with a Local Storage Stitch Tracker</h1>
-      <p><em>July 7, 2026</em></p>
+      <time datetime="2026-07-07">July 7, 2026</time>
       
-      <p>Keeping track of complex knitting patterns often requires maintaining a physical tally of completed rows and stitches on graph paper. While reliable, this manual process introduces friction, particularly when traveling or knitting in low-light environments.</p>
+      <p>Tracking stitches and rows during knitting projects typically involves physical graph paper, tally marks, or mechanical clickers. These analog methods, while functional, introduce friction when managing complex patterns or correcting mistakes. To address this, I developed a simple browser-based stitch tracker [1].</p>
 
-      <p>To digitize this workflow without relying on bloated, ad-supported mobile applications, I have published a <a href="../../tools/stitch-tracker.html">Local Storage Stitch Tracker</a>. The interface provides oversized touch targets suitable for quick interactions on a mobile device while knitting.</p>
+      <h2>Design and Architecture</h2>
+      <p>The application is designed strictly as a Free and Open Source Software (FOSS) utility. It operates completely offline and requires zero external databases for state management. This architectural choice prioritizes data privacy and loading speed.</p>
+      
+      <p>State persistence is achieved via the browser's native localStorage API. When a user increments or decrements a count, the integer is written directly to the local device. Consequently, closing the tab, refreshing the browser, or losing internet connectivity does not result in data loss. The data never leaves the user's device.</p>
 
-      <p>From a technical standpoint, the tool is a static HTML document that utilizes the browser's native Web Storage API [1] to persist state. Because it requires zero databases and executes entirely offline, it eliminates load times, ensures absolute privacy, and functions reliably in environments without internet connectivity.</p>
+      <h2>User Interface</h2>
+      <p>The interface is implemented with primitive HTML and minimal CSS. It features a mobile-first layout with enlarged touch targets for the increment and decrement functions, accommodating users who may be interacting with a device while holding knitting needles. The application intentionally omits JavaScript frameworks and external CSS libraries to reduce bloat and minimize the resource footprint.</p>
 
-      <h3>References</h3>
-      <ol>
-        <li>MDN Web Docs: Web Storage API. <a href="https://developer.mozilla.org/en-US/docs/Web/API/Web_Storage_API">https://developer.mozilla.org/en-US/docs/Web/API/Web_Storage_API</a></li>
-      </ol>
+      <section>
+        <h3>References</h3>
+        <ol>
+          <li><a href="../../tools/stitch-tracker.html">Local Storage Stitch Tracker</a></li>
+        </ol>
+      </section>
     </article>
   </main>
 
