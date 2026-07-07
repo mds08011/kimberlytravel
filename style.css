@@ -206,3 +206,15 @@ button:hover {
   font-weight: bold;
   display: none;
 }
+
+/* SVG Travel Map Styles */
+figure svg {
+  width: 100%;
+  height: auto;
+}
+
+.visited {
+  fill: var(--accent);
+  transition: fill 0.3s ease;
+}
+
