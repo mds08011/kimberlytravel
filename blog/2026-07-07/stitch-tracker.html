@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Digitizing Knitting Progress with a Local Storage Stitch Tracker | Kimberly Sultz</title>
+  <link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+  <header>
+    <nav>
+      <ul>
+        <li><a href="../../index.html">Home</a></li>
+        <li><a href="../../travelmap/">Travel Map</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <h1>Digitizing Knitting Progress with a Local Storage Stitch Tracker</h1>
+      <p><em>July 7, 2026</em></p>
+      
+      <p>Keeping track of complex knitting patterns often requires maintaining a physical tally of completed rows and stitches on graph paper. While reliable, this manual process introduces friction, particularly when traveling or knitting in low-light environments.</p>
+
+      <p>To digitize this workflow without relying on bloated, ad-supported mobile applications, I have published a <a href="../../tools/stitch-tracker.html">Local Storage Stitch Tracker</a>. The interface provides oversized touch targets suitable for quick interactions on a mobile device while knitting.</p>
+
+      <p>From a technical standpoint, the tool is a static HTML document that utilizes the browser's native Web Storage API [1] to persist state. Because it requires zero databases and executes entirely offline, it eliminates load times, ensures absolute privacy, and functions reliably in environments without internet connectivity.</p>
+
+      <h3>References</h3>
+      <ol>
+        <li>MDN Web Docs: Web Storage API. <a href="https://developer.mozilla.org/en-US/docs/Web/API/Web_Storage_API">https://developer.mozilla.org/en-US/docs/Web/API/Web_Storage_API</a></li>
+      </ol>
+    </article>
+  </main>
+
+  <footer>
+    <hr>
+    <p>This website's source code is open and available on <a href="https://github.com/mds08011/kimberlytravel">Github</a>.</p>
+  </footer>
+</body>
+</html>

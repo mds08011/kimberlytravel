@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cricut SVG Vectorizer | Kimberly Sultz</title>
+  <link rel="stylesheet" href="../style.css">
+  <style>
+    .tool-container {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    .massive-btn {
+      display: block;
+      width: 100%;
+      padding: 1.5rem;
+      font-size: 1.5rem;
+      background-color: #0078D7;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      text-align: center;
+      cursor: pointer;
+      font-weight: bold;
+      text-decoration: none;
+    }
+    .massive-btn:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+    .slider-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    input[type=range] {
+      width: 100%;
+      height: 2rem;
+    }
+    canvas {
+      max-width: 100%;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background-image: repeating-linear-gradient(45deg, #eee 25%, transparent 25%, transparent 75%, #eee 75%, #eee), repeating-linear-gradient(45deg, #eee 25%, transparent 25%, transparent 75%, #eee 75%, #eee);
+      background-size: 20px 20px;
+      background-position: 0 0, 10px 10px;
+    }
+    input[type=file] {
+      font-size: 1.2rem;
+      padding: 0.5rem 0;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <nav>
+      <ul>
+        <li><a href="../index.html">Home</a></li>
+        <li><a href="../travelmap/">Travel Map</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <h1>Cricut SVG Vectorizer</h1>
+      <p>Convert images to SVG cut paths 100% locally. No uploads, no subscriptions.</p>
+      
+      <div class="tool-container">
+        <div>
+          <label for="imageUpload"><strong>1. Select an Image (PNG/JPG)</strong></label><br>
+          <input type="file" id="imageUpload" accept="image/png, image/jpeg">
+        </div>
+
+        <div class="slider-group">
+          <label for="thresholdSlider"><strong>2. Adjust Threshold: <span id="thresholdVal">128</span></strong></label>
+          <input type="range" id="thresholdSlider" min="1" max="254" value="128">
+        </div>
+
+        <div>
+          <strong>Preview</strong>
+          <canvas id="previewCanvas"></canvas>
+        </div>
+
+        <button id="downloadBtn" class="massive-btn" disabled>Download SVG</button>
+      </div>
+    </article>
+  </main>
+
+  <footer>
+    <hr>
+    <p>This website's source code is open and available on <a href="https://github.com/mds08011/kimberlytravel">Github</a>.</p>
+  </footer>
+
+  <script>
+    const imageUpload = document.getElementById('imageUpload');
+    const thresholdSlider = document.getElementById('thresholdSlider');
+    const thresholdVal = document.getElementById('thresholdVal');
+    const previewCanvas = document.getElementById('previewCanvas');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const ctx = previewCanvas.getContext('2d');
+    
+    let originalImage = null;
+    let svgDataUrl = null;
+
+    imageUpload.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          originalImage = img;
+          processImage();
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    thresholdSlider.addEventListener('input', (e) => {
+      thresholdVal.textContent = e.target.value;
+      if (originalImage) processImage();
+    });
+
+    downloadBtn.addEventListener('click', () => {
+      if (svgDataUrl) {
+        const a = document.createElement('a');
+        a.href = svgDataUrl;
+        a.download = 'vectorized.svg';
+        a.click();
+      }
+    });
+
+    function processImage() {
+      const MAX_WIDTH = 800; // Limit size for performance
+      let width = originalImage.width;
+      let height = originalImage.height;
+      if (width > MAX_WIDTH) {
+        height = Math.floor(height * (MAX_WIDTH / width));
+        width = MAX_WIDTH;
+      }
+      
+      previewCanvas.width = width;
+      previewCanvas.height = height;
+      ctx.drawImage(originalImage, 0, 0, width, height);
+      
+      const imageData = ctx.getImageData(0, 0, width, height);
+      const data = imageData.data;
+      const threshold = parseInt(thresholdSlider.value, 10);
+      
+      // Thresholding
+      const binaryGrid = new Uint8Array(width * height);
+      for (let i = 0; i < data.length; i += 4) {
+        let r = data[i];
+        let g = data[i+1];
+        let b = data[i+2];
+        let a = data[i+3];
+        let luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        let isBlack = luma < threshold && a > 128;
+        
+        let pxIdx = i / 4;
+        binaryGrid[pxIdx] = isBlack ? 1 : 0;
+        
+        // Update canvas to show b&w preview
+        let val = isBlack ? 0 : 255;
+        data[i] = data[i+1] = data[i+2] = val;
+        data[i+3] = a > 128 ? 255 : 0;
+      }
+      ctx.putImageData(imageData, 0, 0);
+      
+      // Vectorize
+      vectorize(binaryGrid, width, height);
+    }
+
+    function vectorize(grid, width, height) {
+      function isBlack(x, y) {
+        if (x < 0 || x >= width || y < 0 || y >= height) return false;
+        return grid[y * width + x] === 1;
+      }
+
+      const adj = new Map();
+      function addEdge(x1, y1, x2, y2) {
+        const u = x1 + y1 * (width + 1);
+        const v = x2 + y2 * (width + 1);
+        if (!adj.has(u)) adj.set(u, []);
+        adj.get(u).push(v);
+      }
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          if (isBlack(x, y)) {
+            if (!isBlack(x, y - 1)) addEdge(x, y, x + 1, y);         // top
+            if (!isBlack(x, y + 1)) addEdge(x + 1, y + 1, x, y + 1); // bottom
+            if (!isBlack(x - 1, y)) addEdge(x, y + 1, x, y);         // left
+            if (!isBlack(x + 1, y)) addEdge(x + 1, y, x + 1, y + 1); // right
+          }
+        }
+      }
+
+      const paths = [];
+      const visitedEdges = new Set();
+      
+      for (let [u, neighbors] of adj.entries()) {
+        for (let v of neighbors) {
+          const edgeId = u + "," + v;
+          if (visitedEdges.has(edgeId)) continue;
+          
+          let path = [];
+          let curr = u;
+          let next = v;
+          
+          while (true) {
+            path.push(curr);
+            visitedEdges.add(curr + "," + next);
+            curr = next;
+            const nextEdges = adj.get(curr) || [];
+            let found = false;
+            for (let nxt of nextEdges) {
+              if (!visitedEdges.has(curr + "," + nxt)) {
+                next = nxt;
+                found = true;
+                break;
+              }
+            }
+            if (!found) {
+              path.push(curr);
+              break;
+            }
+          }
+          paths.push(path);
+        }
+      }
+
+      function nodeToPt(id) {
+        return {
+          x: id % (width + 1),
+          y: Math.floor(id / (width + 1))
+        };
+      }
+
+      let svgPathData = "";
+      for (let p of paths) {
+        if (p.length < 2) continue;
+        let opt = [p[0]];
+        for (let i = 1; i < p.length - 1; i++) {
+          let p0 = nodeToPt(p[i-1]);
+          let p1 = nodeToPt(p[i]);
+          let p2 = nodeToPt(p[i+1]);
+          let dx1 = p1.x - p0.x, dy1 = p1.y - p0.y;
+          let dx2 = p2.x - p1.x, dy2 = p2.y - p1.y;
+          if (dx1 * dy2 !== dx2 * dy1) {
+            opt.push(p[i]);
+          }
+        }
+        opt.push(p[p.length - 1]);
+        
+        const pts = opt.map(nodeToPt);
+        svgPathData += `M ${pts[0].x} ${pts[0].y} `;
+        for (let i = 1; i < pts.length; i++) {
+          svgPathData += `L ${pts[i].x} ${pts[i].y} `;
+        }
+        svgPathData += "Z ";
+      }
+
+      const svgString = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
+        <path d="${svgPathData}" fill="black" />
+      </svg>`;
+      
+      const blob = new Blob([svgString], { type: "image/svg+xml" });
+      if (svgDataUrl) URL.revokeObjectURL(svgDataUrl);
+      svgDataUrl = URL.createObjectURL(blob);
+      downloadBtn.disabled = false;
+    }
+  </script>
+</body>
+</html>

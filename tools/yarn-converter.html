@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Yarn Substitution Calculator | Kimberly Sultz</title>
+  <link rel="stylesheet" href="../style.css">
+  <style>
+    .calc-container {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+      max-width: 500px;
+      margin: 0 auto;
+      background: #f9f9f9;
+      padding: 1.5rem;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+    }
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .input-group label {
+      font-weight: bold;
+      font-size: 1.1rem;
+    }
+    input[type=number] {
+      padding: 1rem;
+      font-size: 1.2rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    .result-box {
+      margin-top: 1rem;
+      padding: 1.5rem;
+      background-color: #e3f2fd;
+      border: 1px solid #90caf9;
+      border-radius: 8px;
+      text-align: center;
+    }
+    .result-text {
+      font-size: 2rem;
+      font-weight: bold;
+      color: #0d47a1;
+      margin: 0 0 0.5rem 0;
+    }
+    .result-note {
+      font-size: 0.9rem;
+      color: #424242;
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <nav>
+      <ul>
+        <li><a href="../index.html">Home</a></li>
+        <li><a href="../travelmap/">Travel Map</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <h1>Yarn Substitution Calculator</h1>
+      <p>Instantly calculate how many skeins of a substitute yarn you need to buy for a pattern.</p>
+      
+      <div class="calc-container">
+        <div class="input-group">
+          <label for="totalYardage">Pattern's Total Required Yardage/Meterage</label>
+          <input type="number" id="totalYardage" min="0" placeholder="e.g. 1200">
+        </div>
+
+        <div class="input-group">
+          <label for="skeinYardage">New Yarn's Yardage/Meterage per Skein</label>
+          <input type="number" id="skeinYardage" min="1" placeholder="e.g. 210">
+        </div>
+
+        <div class="result-box" id="resultBox" style="display: none;">
+          <p class="result-text" id="resultText"></p>
+          <p class="result-note">Note: It is recommended to buy one extra skein as a safety buffer for dye lot matching.</p>
+        </div>
+      </div>
+    </article>
+  </main>
+
+  <footer>
+    <hr>
+    <p>This website's source code is open and available on <a href="https://github.com/mds08011/kimberlytravel">Github</a>.</p>
+  </footer>
+
+  <script>
+    const totalInput = document.getElementById('totalYardage');
+    const skeinInput = document.getElementById('skeinYardage');
+    const resultBox = document.getElementById('resultBox');
+    const resultText = document.getElementById('resultText');
+
+    function calculate() {
+      const total = parseFloat(totalInput.value);
+      const perSkein = parseFloat(skeinInput.value);
+
+      if (!isNaN(total) && !isNaN(perSkein) && perSkein > 0) {
+        const skeinsRequired = Math.ceil(total / perSkein);
+        resultText.textContent = `You need to buy: ${skeinsRequired} skeins`;
+        resultBox.style.display = 'block';
+      } else {
+        resultBox.style.display = 'none';
+      }
+    }
+
+    totalInput.addEventListener('input', calculate);
+    skeinInput.addEventListener('input', calculate);
+  </script>
+</body>
+</html>

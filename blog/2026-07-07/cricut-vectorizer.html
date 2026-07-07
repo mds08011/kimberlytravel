@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Converting Images to SVG Cut Paths Locally | Kimberly Sultz</title>
+  <link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+  <header>
+    <nav>
+      <ul>
+        <li><a href="../../index.html">Home</a></li>
+        <li><a href="../../travelmap/">Travel Map</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <h1>Converting Images to SVG Cut Paths Locally</h1>
+      <p><em>July 7, 2026</em></p>
+      
+      <p>A common pain point when using Cricut cutting machines is the need to convert raster images (like PNGs or JPEGs) into scalable vector graphics (SVGs) containing exact cut paths. While Cricut Design Space offers some built-in tools for this, it often steers users toward the paid Cricut Access subscription for higher-quality conversions. Alternatively, crafters rely on third-party ad-supported conversion websites, which requires uploading personal or copyrighted designs to unknown servers.</p>
+
+      <p>To solve this, I built a <a href="../../tools/cricut-vectorizer.html">local SVG vectorizer tool</a>. It uses the browser's native HTML5 Canvas API to process images entirely offline. The script reads the image data, applies a user-adjustable black-and-white threshold, and performs a contour trace to generate closed SVG paths [1]. Because all computation occurs in the local browser environment, no files are ever transmitted to a server, ensuring privacy and fast generation.</p>
+
+      <h3>References</h3>
+      <ol>
+        <li>The contour tracing approach was adapted from the logic of Simon Willison's client-side image-to-svg tool: <a href="https://tools.simonwillison.net/image-to-svg">https://tools.simonwillison.net/image-to-svg</a></li>
+      </ol>
+    </article>
+  </main>
+
+  <footer>
+    <hr>
+    <p>This website's source code is open and available on <a href="https://github.com/mds08011/kimberlytravel">Github</a>.</p>
+  </footer>
+</body>
+</html>

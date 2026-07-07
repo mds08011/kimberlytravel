@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Calculating Yarn Substitutions Offline | Kimberly Sultz</title>
+  <link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+  <header>
+    <nav>
+      <ul>
+        <li><a href="../../index.html">Home</a></li>
+        <li><a href="../../travelmap/">Travel Map</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <h1>Calculating Yarn Substitutions Offline</h1>
+      <p><em>July 7, 2026</em></p>
+      
+      <p>When selecting a substitute yarn for a knitting or crochet pattern, determining the correct quantity to purchase requires converting the pattern's total yardage requirement into the specific skein length of the new yarn. While simple division, doing this math in a yarn shop can introduce errors.</p>
+
+      <p>To eliminate this friction, I developed a simple <a href="../../tools/yarn-converter.html">Yarn Substitution Calculator</a>. This tool accepts the total required yardage and the substitute yarn's length per skein, instantly returning the rounded-up integer of skeins required [1].</p>
+
+      <p>Consistent with the rest of this site, the calculator operates completely offline via client-side JavaScript. It features zero dependencies, requires no server interactions, and respects user privacy by avoiding external tracking scripts.</p>
+
+      <h3>References</h3>
+      <ol>
+        <li>Math.ceil() - JavaScript | MDN. <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/ceil">https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/ceil</a></li>
+      </ol>
+    </article>
+  </main>
+
+  <footer>
+    <hr>
+    <p>This website's source code is open and available on <a href="https://github.com/mds08011/kimberlytravel">Github</a>.</p>
+  </footer>
+</body>
+</html>

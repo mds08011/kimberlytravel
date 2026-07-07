@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Local Storage Stitch Tracker | Kimberly Sultz</title>
+  <link rel="stylesheet" href="../style.css">
+  <style>
+    .tracker-container {
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+      max-width: 500px;
+      margin: 0 auto;
+    }
+    .counter-section {
+      background-color: #f9f9f9;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 1.5rem;
+      text-align: center;
+    }
+    .counter-section h2 {
+      margin-top: 0;
+      margin-bottom: 1rem;
+    }
+    .display-value {
+      font-size: 4rem;
+      font-weight: bold;
+      margin: 1rem 0;
+    }
+    .button-group {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+    }
+    .btn-massive {
+      flex: 1;
+      padding: 1.5rem;
+      font-size: 2rem;
+      font-weight: bold;
+      background-color: #0078D7;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .btn-massive:active {
+      background-color: #005a9e;
+    }
+    .btn-reset {
+      background-color: #d32f2f;
+      color: white;
+      border: none;
+      padding: 1rem;
+      font-size: 1.2rem;
+      border-radius: 8px;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 1rem;
+    }
+    .btn-reset:active {
+      background-color: #9a0007;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <nav>
+      <ul>
+        <li><a href="../index.html">Home</a></li>
+        <li><a href="../travelmap/">Travel Map</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <h1>Local Storage Stitch Tracker</h1>
+      <p>A simple offline counter for rows and stitches. Your progress is saved automatically to your device.</p>
+      
+      <div class="tracker-container">
+        <div class="counter-section">
+          <h2>Rows</h2>
+          <div class="display-value" id="rowCount">0</div>
+          <div class="button-group">
+            <button class="btn-massive" id="rowMinus">-</button>
+            <button class="btn-massive" id="rowPlus">+</button>
+          </div>
+        </div>
+
+        <div class="counter-section">
+          <h2>Stitches</h2>
+          <div class="display-value" id="stitchCount">0</div>
+          <div class="button-group">
+            <button class="btn-massive" id="stitchMinus">-</button>
+            <button class="btn-massive" id="stitchPlus">+</button>
+          </div>
+        </div>
+
+        <button class="btn-reset" id="resetBtn">Reset Project</button>
+      </div>
+    </article>
+  </main>
+
+  <footer>
+    <hr>
+    <p>This website's source code is open and available on <a href="https://github.com/mds08011/kimberlytravel">Github</a>.</p>
+  </footer>
+
+  <script>
+    const rowCountEl = document.getElementById('rowCount');
+    const stitchCountEl = document.getElementById('stitchCount');
+    
+    let rows = parseInt(localStorage.getItem('tracker_rows')) || 0;
+    let stitches = parseInt(localStorage.getItem('tracker_stitches')) || 0;
+
+    function updateDisplay() {
+      rowCountEl.textContent = rows;
+      stitchCountEl.textContent = stitches;
+      localStorage.setItem('tracker_rows', rows);
+      localStorage.setItem('tracker_stitches', stitches);
+    }
+
+    document.getElementById('rowPlus').addEventListener('click', () => { rows++; updateDisplay(); });
+    document.getElementById('rowMinus').addEventListener('click', () => { if (rows > 0) rows--; updateDisplay(); });
+    
+    document.getElementById('stitchPlus').addEventListener('click', () => { stitches++; updateDisplay(); });
+    document.getElementById('stitchMinus').addEventListener('click', () => { if (stitches > 0) stitches--; updateDisplay(); });
+
+    document.getElementById('resetBtn').addEventListener('click', () => {
+      if (confirm('Are you sure you want to reset your project? This will clear your saved row and stitch counts.')) {
+        rows = 0;
+        stitches = 0;
+        updateDisplay();
+      }
+    });
+
+    updateDisplay();
+  </script>
+</body>
+</html>
