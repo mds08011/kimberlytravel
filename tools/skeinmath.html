@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   SKEIN MATH — Yarn Sufficiency & Gauge Conversion
-  v1.0.0 · 2026-07-07
+  v1.1.0 · 2026-07-08
   First tool of the fiber-arts suite. Single-file, offline, zero dependencies.
   Panel A: kitchen-scale yardage — do I have enough to finish?
   Panel B: gauge conversion — pattern gauge vs. my swatch, with repeat rounding.
@@ -131,7 +131,7 @@
 
   <header>
     <h1>Skein <span class="amp">&amp;</span> Gauge</h1>
-    <span class="ver">skein math · v1.0.0 · offline</span>
+    <span class="ver">skein math · v1.1.0 · offline</span>
   </header>
 
   <section aria-label="Yarn sufficiency">
@@ -208,11 +208,55 @@
     </div>
   </section>
 
+  <section aria-label="Shaping">
+    <h2>Even shaping</h2>
+    <p class="sub">Turn "decrease 7 evenly across 91" or "increase to 96 over 60 rows" into the actual instruction.</p>
+    <div class="card">
+      <div class="toolrow">
+        <span class="seg" role="group" aria-label="Shaping mode">
+          <button type="button" data-shmode="across" aria-pressed="true">Across a row</button>
+          <button type="button" data-shmode="rows" aria-pressed="false">Over rows</button>
+        </span>
+        <span class="seg" role="group" aria-label="Direction">
+          <button type="button" data-shdir="dec" aria-pressed="true">Decrease</button>
+          <button type="button" data-shdir="inc" aria-pressed="false">Increase</button>
+        </span>
+      </div>
+
+      <div class="grid" id="acrossFields">
+        <div class="field"><label for="shN">Stitches on the needle</label>
+          <input id="shN" type="number" inputmode="numeric" step="1" placeholder="91"></div>
+        <div class="field"><label for="shC" id="shCLabel">Decrease how many</label>
+          <input id="shC" type="number" inputmode="numeric" step="1" placeholder="7"></div>
+      </div>
+
+      <div class="grid two" id="rowsFields" hidden>
+        <div class="field"><label for="shStart">Start stitches</label>
+          <input id="shStart" type="number" inputmode="numeric" step="1" placeholder="48"></div>
+        <div class="field"><label for="shEnd">End stitches</label>
+          <input id="shEnd" type="number" inputmode="numeric" step="1" placeholder="96"></div>
+        <div class="field"><label for="shRows">Over how many rows</label>
+          <input id="shRows" type="number" inputmode="numeric" step="1" placeholder="60"></div>
+        <div class="field"><label for="shPer">Stitches changed per shaping row</label>
+          <input id="shPer" type="number" inputmode="numeric" step="1" placeholder="2"></div>
+      </div>
+
+      <div class="result" id="shResult" hidden>
+        <span class="bignum" id="shBig" style="color:var(--madder)">—</span>
+        <div class="resline" id="shLine1"></div>
+        <div class="resline" id="shLine2"></div>
+        <div class="note" id="shNote"></div>
+      </div>
+    </div>
+  </section>
+
   <footer>
     Yardage from weight assumes even winding: <code>remaining = (grams left ÷ ball grams) × ball length</code>.
     The verdict wants a ≥10% margin — seams, swatches, and one frogged section eat yarn.
     Gauge math is proportional: <code>your count = pattern count × (your gauge ÷ pattern gauge)</code>,
     then rounded to your stitch repeat if you set one. Same rule works for rows.
+    Shaping distributes changes as evenly as the stitch count allows — leftover stitches
+    land in the larger groups, and the instruction reads the way a pattern would write it.
     Saved yarns live in this browser only (<code>localStorage</code>).
   </footer>
 </div>
@@ -231,7 +275,7 @@ function load(){
     const raw = localStorage.getItem(LS_KEY);
     if(raw){ const p = JSON.parse(raw); if(p && p.stash) return p; }
   }catch(e){}
-  return { unit:"yd", basis:4, stash:{}, last:{} };  // stash: name -> {g, len, unit}
+  return { unit:"yd", basis:4, shmode:"across", shdir:"dec", stash:{}, last:{} };  // stash: name -> {g, len, unit}
 }
 function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){} }
 const $   = id => document.getElementById(id);
@@ -394,8 +438,111 @@ $("stashDel").addEventListener("click", ()=>{
   save(); renderStash(); toast("Deleted");
 });
 
+/* ================= panel C: shaping ================= */
+function acrossInstruction(N, C, dir){
+  if(!N || N<2) return {err:"Enter the stitch count on the needle."};
+  if(!C || C<1) return {err:"Enter how many stitches to "+(dir==="dec"?"decrease":"increase")+"."};
+  if(dir==="dec" && C > Math.floor(N/2))
+    return {err:"Can't decrease "+C+" across only "+N+" sts — each decrease needs 2 stitches."};
+  if(dir==="inc" && C > N)
+    return {err:"That's more increases than stitches to work them into."};
+  const base=Math.floor(N/C), rem=N%C;
+  const sizes=[];
+  for(let i=0;i<C;i++) sizes.push(i<rem ? base+1 : base);
+  const verb = dir==="dec" ? "k2tog" : "kfb";
+  const seg = size => {
+    const k = dir==="dec" ? size-2 : size-1;
+    return k>0 ? "k"+k+", "+verb : verb;
+  };
+  // run-length encode consecutive identical segment sizes
+  const parts=[]; let i=0;
+  while(i<C){
+    let j=i; while(j<C && sizes[j]===sizes[i]) j++;
+    const cnt=j-i, s=seg(sizes[i]);
+    parts.push(cnt>1 ? "["+s+"] "+cnt+"×" : s);
+    i=j;
+  }
+  return { instruction:parts.join(", "), resultSts: dir==="dec" ? N-C : N+C, verb };
+}
+function overRows(start, end, rows, per, dir){
+  if(!start || !end) return {err:"Enter start and end stitch counts."};
+  if(!rows || rows<1) return {err:"Enter the number of rows to shape over."};
+  per = per || 1;
+  const diff = Math.abs(end-start);
+  const wantDir = end>start ? "inc" : end<start ? "dec" : "none";
+  if(wantDir==="none") return {err:"Start and end counts are the same — no shaping needed."};
+  if(dir && dir!==wantDir)
+    return {err:"Those counts "+(wantDir==="inc"?"increase":"decrease")+", but "+(dir==="inc"?"Increase":"Decrease")+" is selected."};
+  if(diff % per !== 0)
+    return {err:diff+" stitches doesn't divide evenly by "+per+" per shaping row. Try "+per+" into a multiple of "+per+"."};
+  const shapings = diff/per;
+  if(shapings > rows) return {err:"Need "+shapings+" shaping rows but only have "+rows+" rows."};
+  const base=Math.floor(rows/shapings), rem=rows%shapings;
+  return { shapings, bigEvery:base+1, bigN:rem, smallEvery:base, smallN:shapings-rem, per, dir:wantDir };
+}
+function ordinal(n){
+  const s=["th","st","nd","rd"], v=n%100;
+  return n+(s[(v-20)%10]||s[v]||s[0]);
+}
+function calcShaping(){
+  const dir=S.shdir, res=$("shResult");
+  let out;
+  if(S.shmode==="across"){
+    out = acrossInstruction(num($("shN").value), num($("shC").value), dir);
+  } else {
+    out = overRows(num($("shStart").value), num($("shEnd").value),
+                   num($("shRows").value), num($("shPer").value), dir);
+  }
+  if(out.err){
+    res.hidden=false;
+    $("shBig").textContent="—"; $("shBig").style.color="var(--faint)";
+    $("shLine1").textContent=""; $("shLine2").textContent="";
+    $("shNote").textContent=out.err;
+    return;
+  }
+  res.hidden=false; $("shBig").style.color="var(--madder)";
+  $("shNote").textContent="";
+  if(S.shmode==="across"){
+    $("shBig").innerHTML = out.instruction;
+    $("shLine1").innerHTML = "ends with <b>"+out.resultSts+"</b> stitches";
+    $("shLine2").innerHTML = "each "+out.verb+" "+(dir==="dec"?"consumes 2 sts and makes 1":"makes 1 extra st")+
+      "; leftover stitches sit in the larger groups";
+  } else {
+    const p=[];
+    if(out.bigN>0) p.push((out.dir==="inc"?"inc":"dec")+" "+out.per+" every "+ordinal(out.bigEvery)+" row, "+out.bigN+"×");
+    if(out.smallN>0) p.push((out.dir==="inc"?"inc":"dec")+" "+out.per+" every "+ordinal(out.smallEvery)+" row, "+out.smallN+"×");
+    $("shBig").style.fontSize="1.25rem";
+    $("shBig").innerHTML = p.join(", then ");
+    $("shLine1").innerHTML = out.shapings+" shaping rows across "+num($("shRows").value)+" rows";
+    $("shLine2").innerHTML = (out.dir==="inc"?"increasing":"decreasing")+" "+out.per+" stitch"+(out.per>1?"es":"")+
+      " each shaping row — work plain on the rows between";
+  }
+}
+function setShMode(m){
+  S.shmode=m; save();
+  $("acrossFields").hidden = m!=="across";
+  $("rowsFields").hidden = m==="across";
+  document.querySelectorAll("[data-shmode]").forEach(b=>b.setAttribute("aria-pressed", b.dataset.shmode===m));
+  $("shResult").hidden=true;
+  calcShaping();
+}
+function setShDir(d){
+  S.shdir=d; save();
+  $("shCLabel").textContent = (d==="dec"?"Decrease":"Increase")+" how many";
+  document.querySelectorAll("[data-shdir]").forEach(b=>b.setAttribute("aria-pressed", b.dataset.shdir===d));
+  calcShaping();
+}
+
 /* ================= init ================= */
+document.querySelectorAll("[data-shmode]").forEach(b=>
+  b.addEventListener("click", ()=>setShMode(b.dataset.shmode)));
+document.querySelectorAll("[data-shdir]").forEach(b=>
+  b.addEventListener("click", ()=>setShDir(b.dataset.shdir)));
+["shN","shC","shStart","shEnd","shRows","shPer"].forEach(id=>
+  $(id).addEventListener("input", calcShaping));
+
 setUnit(S.unit); setBasis(S.basis); renderStash();
+setShMode(S.shmode); setShDir(S.shdir);
 </script>
 </body>
 </html>

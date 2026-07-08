@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   PUMP ROOM — Water Chemistry Calculator
-  v1.0.0 · 2026-07-07
+  v1.1.0 · 2026-07-08
   Single-file, offline, zero dependencies. Pure HTML/CSS/JS.
   Bodies of water are hardcoded below in POOLS (edit there to change volumes/targets).
   Dosing figures are field estimates — dose in stages, circulate, retest.
@@ -165,7 +165,7 @@
 
   <header>
     <h1><span class="tick">▮</span> Pump Room</h1>
-    <span class="ver">chem calc · v1.0.0 · offline</span>
+    <span class="ver">chem calc · v1.1.0 · offline</span>
   </header>
 
   <section aria-label="Body of water">
@@ -199,6 +199,17 @@
     </div>
   </section>
 
+  <section aria-label="Flow and turnover">
+    <div class="sechead"><span class="microlabel">Flow &amp; Turnover</span></div>
+    <div class="gauge-card">
+      <div class="field" style="max-width:220px;margin-bottom:4px">
+        <label for="flowIn">Flowmeter reading (GPM)</label>
+        <input id="flowIn" type="number" inputmode="decimal" step="1" placeholder="e.g. 900">
+      </div>
+      <div id="turnout"></div>
+    </div>
+  </section>
+
   <section aria-label="Dosing">
     <div class="sechead"><span class="microlabel">Dosing</span></div>
     <div id="cards"></div>
@@ -217,16 +228,31 @@
 <script>
 "use strict";
 /* ================= CONFIG — edit volumes & targets here ================= */
+/* maxTurnoverH = CA Title 22 §65529 max turnover (pools 6 h, wading/spray 1 h, spa 0.5 h).
+   filterArea (ft²) and filterMedia are optional — set them once per body to enable the
+   filter loading-rate check; leave filterArea:null to hide that line. */
 const POOLS = [
-  { id:"comp",   name:"Competition Pool",  gal:315643, minFC:2.0,
+  { id:"comp",   name:"Competition Pool",  gal:315643, minFC:2.0, maxTurnoverH:6,
+    filterArea:null, filterMedia:"hrsand",
     targets:{ fc:3.0, ph:7.5, ta:90, ch:300, cya:30 } },
-  { id:"inst",   name:"Instructional Pool", gal:84200, minFC:2.0,
+  { id:"inst",   name:"Instructional Pool", gal:84200, minFC:2.0, maxTurnoverH:6,
+    filterArea:null, filterMedia:"hrsand",
     targets:{ fc:3.0, ph:7.5, ta:90, ch:300, cya:30 } },
-  { id:"splash", name:"Splash Pad",         gal:4100,  minFC:3.0,
+  { id:"splash", name:"Splash Pad",         gal:4100,  minFC:3.0, maxTurnoverH:1,
+    filterArea:null, filterMedia:"hrsand",
     targets:{ fc:4.0, ph:7.5, ta:90, ch:250, cya:30 } },
-  { id:"spa",    name:"Spa",                gal:2000,  minFC:3.0,
+  { id:"spa",    name:"Spa",                gal:2000,  minFC:3.0, maxTurnoverH:0.5,
+    filterArea:null, filterMedia:"hrsand",
     targets:{ fc:4.0, ph:7.5, ta:80, ch:200, cya:0 } },
 ];
+
+/* Filter media max loading rate, gpm/ft² (Title 22 / MAHC typical caps). */
+const FILTER_MEDIA = {
+  hrsand:    { name:"High-rate sand", max:15 },
+  sand:      { name:"Rapid sand",     max:3  },
+  de:        { name:"Diatomaceous earth", max:2 },
+  cartridge: { name:"Cartridge",      max:0.375 },
+};
 
 const READ_FIELDS = [
   { key:"fc",  label:"Free Cl (ppm)",  step:"0.1", ph:"2.4"  },
@@ -273,7 +299,7 @@ function load(){
     const raw = localStorage.getItem(LS_KEY);
     if(raw){ const p = JSON.parse(raw); if(p && p.pools) return p; }
   }catch(e){/* private mode / file:// quirks — run stateless */}
-  const s = { active:"comp", pools:{} };
+  const s = { active:"comp", flow:"", pools:{} };
   POOLS.forEach(p=>{ s.pools[p.id] = { r:{}, t:{...p.targets}, chlor:"lq125", acid:"ma3145", stamp:null }; });
   return s;
 }
@@ -550,15 +576,52 @@ function renderHazard(r){
   $("hazardMsg").innerHTML = msgs.join("<br>");
 }
 
+/* ================= flow & turnover ================= */
+function renderTurnover(){
+  const p = pool();
+  const gpm = num(S.flow);
+  const maxH = p.maxTurnoverH;
+  const minGPM = Math.ceil(p.gal/(maxH*60));
+  const L = [];
+  L.push(`<div class="lsi-note" style="margin-top:0">Code max turnover for this body: <b style="color:var(--ink)">${maxH} h</b> · minimum compliant flow <b style="color:var(--ink)">${minGPM.toLocaleString()} GPM</b></div>`);
+  if(gpm!=null && gpm>0){
+    const th = p.gal/(gpm*60);              // turnover hours
+    const pass = th <= maxH + 1e-9;
+    const col = pass ? "var(--ok)" : "var(--acid)";
+    const word = pass ? "COMPLIANT" : "TOO SLOW";
+    L.push(`<div class="gauge-top" style="margin-top:10px">
+      <span class="lsi-num" style="color:${col}">${th.toFixed(2)} h</span>
+      <span class="lsi-word" style="color:${col}">${word}</span></div>`);
+    L.push(`<div class="lsi-note">turnover at ${gpm.toLocaleString()} GPM${pass
+      ? ` — within the ${maxH} h limit (${Math.round((maxH-th)/maxH*100)}% margin).`
+      : ` — exceeds the ${maxH} h limit. Need <b style="color:var(--ink)">${minGPM.toLocaleString()} GPM</b> (short by ${(minGPM-gpm).toLocaleString()}).`}</div>`);
+    // filter loading, if configured
+    if(p.filterArea && p.filterArea>0){
+      const media = FILTER_MEDIA[p.filterMedia] || FILTER_MEDIA.hrsand;
+      const rate = gpm/p.filterArea;
+      const fpass = rate <= media.max + 1e-9;
+      const fcol = fpass ? "var(--ok)" : "var(--acid)";
+      L.push(`<div class="lsi-note" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line)">
+        Filter loading <b style="color:${fcol}">${rate.toFixed(2)} gpm/ft²</b> across ${p.filterArea} ft² ${media.name}
+        — ${fpass ? "within" : "OVER"} the ${media.max} gpm/ft² max${fpass ? "." : " — throttle flow or add filter area."}</div>`);
+    }
+  } else {
+    L.push(`<div class="lsi-note">Enter the flowmeter reading to check turnover${p.filterArea?" and filter loading":""}.</div>`);
+  }
+  $("turnout").innerHTML = L.join("");
+}
+
 function renderAll(){
   renderPools();
   renderReadings();
+  $("flowIn").value = S.flow ?? "";
   refresh();
 }
 function refresh(){
   const d = doses();
   renderHazard(d.r);
   renderGauge(calcLSI(d.r));
+  renderTurnover();
   renderCards(d);
 }
 
@@ -574,6 +637,10 @@ $("readings").addEventListener("input", e=>{
   pstate().stamp = new Date().toLocaleString([], {month:"numeric",day:"numeric",hour:"numeric",minute:"2-digit"});
   $("stamp").textContent = "last edit "+pstate().stamp;
   save(); refresh();
+});
+
+$("flowIn").addEventListener("input", e=>{
+  S.flow = e.target.value; save(); renderTurnover();
 });
 
 $("cards").addEventListener("input", e=>{
