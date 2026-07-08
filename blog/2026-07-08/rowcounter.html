@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>A Persistent Row and Repeat Counter for Knitting Projects</title>
+  <link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+  <header>
+    <nav>
+      <ul>
+        <li><a href="../../index.html">Home</a></li>
+        <li><a href="../../travelmap/">Travel Map</a></li>
+        <li><a href="../index.html">Blog</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <h1>A Persistent Row and Repeat Counter for Knitting Projects</h1>
+      <time datetime="2026-07-08">July 8, 2026</time>
+
+      <p>Row &amp; Repeat is a persistent row counter for multiple projects. Each project tracks its own row count, an auto-wrapping pattern-repeat position, and notes pinned to specific rows that surface as you reach them. Every tap writes to storage immediately, and the tool can hold the screen awake mid-project. It is a single-file, offline tool [1].</p>
+
+      <h2>The problem</h2>
+      <p>A mechanical clicker counts rows but not repeats, holds one project, and loses its place if it is knocked. A phone note is worse. The specific failures are: forgetting which row of a repeat you are on after a break, losing the count when a tab closes or a battery dies, and reaching a row that needed a pattern change one row too late. Row &amp; Repeat addresses each — it derives the repeat position from the count, saves on every increment, and pins notes to the rows that need them.</p>
+
+      <h2>How it works</h2>
+      <p>Tap <kbd>+</kbd> when a row is finished; <kbd>&minus;</kbd> undoes one. The large number is rows completed; the line beneath it is the row now on the needles. A progress ring around the number acts as a stitch marker: one lap per pattern repeat, one tick per row, a filling arc for rows done in the current lap, and a bead at the working row's position. Projects are named and switched from a dropdown that sorts the most recently updated first. Increments give a short haptic pulse via <code>navigator.vibrate(12)</code> where supported.</p>
+
+      <figure>
+        <img loading="lazy" src="/blog/img/PLACEHOLDER-rowcounter-ring.png" alt="Row and Repeat counter showing the progress ring with per-row ticks, the completed count, and a pinned next-row note banner">
+        <figcaption>The counter with the repeat ring, the working-row readout, and a pinned-note banner. Placeholder pending a real screenshot.</figcaption>
+      </figure>
+
+      <p>Notes are pinned to a row number and surface automatically: a muted "next row" banner appears one row ahead, and a highlighted "this row" banner appears when that row is current. The <strong>Keep screen awake</strong> button requests a Screen Wake Lock so the tablet does not dim between rows.</p>
+
+      <h2>The math</h2>
+      <h3>Repeat position</h3>
+      <p>For <code>done</code> rows completed and a repeat length <em>L</em>, the row now on the needles is:</p>
+      <pre><code>row-in-repeat = (done mod L) + 1
+repeat number = floor(done / L) + 1</code></pre>
+      <p>This rolls over correctly at the boundary: completing the last row of a repeat advances to row 1 of the next. When no repeat is set, the ring falls back to overall progress toward a total-rows or total-repeats target.</p>
+
+      <h3>Persistence and wake lock</h3>
+      <p>Every increment and decrement writes the full state to <code>localStorage</code> (<code>rowcounter.v1</code>) immediately — there is no batch save, so a closed tab or dead battery loses nothing. The Wake Lock uses <code>navigator.wakeLock.request("screen")</code> and re-acquires automatically on a <code>visibilitychange</code> back to visible, since the browser releases the lock whenever the tab is hidden:</p>
+      <pre><code>document.addEventListener("visibilitychange", () =&gt; {
+  if (wakeWanted &amp;&amp; !wakeLock &amp;&amp; document.visibilityState === "visible")
+    acquireWake();
+});</code></pre>
+      <p>On browsers without the Wake Lock API the button disables itself with a visible "unsupported" label rather than failing silently.</p>
+
+      <h2>Editing the config</h2>
+      <p>There is no facility table here — the tool is driven entirely by the projects a user creates. The one constant at the top of the <code>&lt;script&gt;</code> block is <code>LS_KEY</code>, the storage key. A new project's default shape is the <code>mkproj()</code> factory (row count, repeat length, repeat/row targets, notes). The repeat arithmetic is the <code>repeatInfo()</code> function; the haptic pulse duration is the argument to <code>navigator.vibrate()</code> in <code>buzz()</code>.</p>
+
+      <h2>Limitations</h2>
+      <ul>
+        <li>Storage is per-device and per-browser. Projects do not sync between a phone and a tablet; clearing the browser's site data clears the counts.</li>
+        <li>The repeat model is a single flat repeat length. Nested or staggered repeats (a lace repeat inside a larger panel repeat) are tracked only as the one length you set.</li>
+        <li>Wake Lock availability depends on the browser and, on some platforms, on the page being served over HTTPS. Where it is unavailable the device's own display timeout applies.</li>
+        <li>Deleting a project is guarded by a prompt but cannot be undone, and the last remaining project cannot be deleted.</li>
+      </ul>
+
+      <section>
+        <h2>References</h2>
+        <ol>
+          <li><a href="../../tools/rowcounter.html">Row &amp; Repeat Counter</a></li>
+          <li>Screen Wake Lock API (<code>navigator.wakeLock</code>) — browser support varies.</li>
+        </ol>
+      </section>
+    </article>
+  </main>
+
+  <footer>
+    <hr>
+    <p>This website's source code is open and available on <a href="https://github.com/mds08011/kimberlytravel">Github</a>.</p>
+  </footer>
+</body>
+</html>

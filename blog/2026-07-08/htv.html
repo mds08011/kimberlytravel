@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sizing and Placing Heat-Transfer Vinyl for Cricut Cuts</title>
+  <link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+  <header>
+    <nav>
+      <ul>
+        <li><a href="../../index.html">Home</a></li>
+        <li><a href="../../travelmap/">Travel Map</a></li>
+        <li><a href="../index.html">Blog</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <h1>Sizing and Placing Heat-Transfer Vinyl for Cricut Cuts</h1>
+      <time datetime="2026-07-08">July 8, 2026</time>
+
+      <p>HTV &amp; Placement computes the cut size and placement for heat-transfer vinyl across garment types and sizes. It constrains the cut to the design's aspect ratio and the placement's limits, draws a to-scale placement diagram, and generates a batch cut list with a 12-inch roll-length estimate for size runs. It is a single-file, offline tool [1].</p>
+
+      <h2>The problem</h2>
+      <p>Getting a decal onto a shirt has two failure modes that both cost a blank. Size it wrong and a design meant for a toddler tee ends up sized for an adult, or a tall design runs off a hoodie's kangaroo pocket. Place it wrong and it sits too high or too low on the chest. Both are usually settled by holding the vinyl up to the shirt and guessing. HTV &amp; Placement replaces the guess with the standard placement-chart numbers for the specific garment and size, and shows where the decal lands before anything is cut.</p>
+
+      <h2>How it works</h2>
+      <p>Pick the blank, the size, and the placement (full front, left chest, full back, or sleeve). Enter the design's width and height in any unit — only their ratio matters. The tool returns the cut dimensions in inches, the recommended maximum width and height for that garment/size/placement, and a plain-language placement instruction ("top edge 3&nbsp;in below the collar seam, centered"). A permanent warning sits on the result: <strong>mirror the design before cutting; HTV goes shiny-side-down on the mat.</strong></p>
+
+      <figure>
+        <img loading="lazy" src="/blog/img/PLACEHOLDER-htv-placement-diagram.png" alt="HTV placement diagram showing a to-scale garment outline with a translucent decal rectangle and dimension callouts">
+        <figcaption>The to-scale placement diagram with dashed seams, the translucent decal rectangle, and dimension callouts. Placeholder pending a real screenshot.</figcaption>
+      </figure>
+
+      <p>The diagram is drawn as an SVG to true scale from the garment's flat dimensions, with dashed seam lines, a translucent decal rectangle at the computed placement, and dimension callouts (the width with tick marks, the collar-offset distance) in the style of an engineering drawing. Selections persist to <code>localStorage</code> (<code>htvplacement.v1</code>).</p>
+
+      <h2>The math</h2>
+      <h3>Cut dimensions</h3>
+      <p>Width starts at the placement's recommended width but is capped at 11.5&nbsp;in — a 12-inch roll or mat, minus margin. If the design's aspect ratio would then push the height past the placement's maximum, the height is capped instead and the width recomputed to preserve the ratio:</p>
+      <pre><code>w = min(recommended_width, 11.5)
+h = w / ratio
+if h &gt; max_height:
+    h = max_height
+    w = h × ratio        // ratio preserved, height governs</code></pre>
+      <p>This height cap is the mechanism that keeps a tall design off a hoodie's kangaroo pocket rather than letting it run long.</p>
+
+      <h3>Batch roll estimate</h3>
+      <p>The batch panel takes a quantity per size and holds the current design ratio across the whole run. The roll estimate packs pieces into rows across the 12-inch width, with half-inch gaps, and sums the row heights:</p>
+      <pre><code>per_row      = floor((11.5 + 0.5) / (piece_width + 0.5))
+roll_length += ceil(qty / per_row) × (piece_height + 0.5)</code></pre>
+
+      <h2>Editing the config</h2>
+      <p>Every garment number lives in the <code>GARMENTS</code> table at the top of the <code>&lt;script&gt;</code> block — six garment types across 27 size rows, each row carrying body dimensions and, per placement, a recommended width, collar offset, and maximum height. A row is built with the <code>sz()</code> helper:</p>
+      <pre><code>sz("M", 20, 29, 10.5, 3, {cw:3.5, cdn:3, sw:3.5})
+//    label  W   L  front-width  collar-offset  chest/sleeve opts</code></pre>
+      <p>The two packing constants are also at the top: <code>MAT_MAX = 11.5</code> (usable cut width) and <code>GAP = 0.5</code> (spacing between pieces). These are house-tunable numbers — change them there and both the single-cut math and the batch estimate follow.</p>
+
+      <h2>Limitations</h2>
+      <ul>
+        <li>The recommended widths and collar offsets are <strong>standard placement-chart estimates, not gospel</strong>. They are a sensible default to be tuned to house taste in the <code>GARMENTS</code> table; they do not account for a specific blank's cut or a customer's preference.</li>
+        <li>Body dimensions are nominal flat measurements per size. Real blanks vary by brand — measure the actual garment when it matters.</li>
+        <li>The roll estimate is a packing lower bound plus gaps. Buy that plus scrap insurance; it does not model weeding waste or failed presses.</li>
+        <li>The tool sizes and places; it does not cut. Mirroring, material settings, and press time still happen in Design Space and on the press.</li>
+      </ul>
+
+      <section>
+        <h2>References</h2>
+        <ol>
+          <li><a href="../../tools/htv.html">HTV Placement Calculator</a></li>
+          <li>Cricut cutting mat / roll usable width (12&nbsp;in nominal), the basis for the 11.5&nbsp;in cut cap.</li>
+        </ol>
+      </section>
+    </article>
+  </main>
+
+  <footer>
+    <hr>
+    <p>This website's source code is open and available on <a href="https://github.com/mds08011/kimberlytravel">Github</a>.</p>
+  </footer>
+</body>
+</html>

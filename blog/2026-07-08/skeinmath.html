@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Yarn Sufficiency and Gauge Conversion from a Kitchen Scale</title>
+  <link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+  <header>
+    <nav>
+      <ul>
+        <li><a href="../../index.html">Home</a></li>
+        <li><a href="../../travelmap/">Travel Map</a></li>
+        <li><a href="../index.html">Blog</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <h1>Yarn Sufficiency and Gauge Conversion from a Kitchen Scale</h1>
+      <time datetime="2026-07-08">July 8, 2026</time>
+
+      <p>Skein &amp; Gauge is a two-part yarn calculator. The first part answers "do I have enough to finish?" from the weight of a partial skein against its ball band. The second converts a pattern's stitch counts to a knitter's actual gauge and rounds the result to a stitch repeat. It is a single-file, offline tool; saved yarns persist locally [1].</p>
+
+      <h2>The problem</h2>
+      <p>Two recurring questions in a project both have exact answers that get guessed at instead. The first is whether the yarn on hand will reach the bind-off — usually estimated by eye from a half-used ball, then discovered wrong at the worst moment. The second is what a pattern's numbers become when your swatch does not match the pattern's gauge — the point at which a garment quietly ends up a size off. A kitchen scale and a ball band answer the first exactly; a proportion answers the second.</p>
+
+      <h2>How it works</h2>
+      <p><strong>Do I have enough?</strong> takes the ball band's weight and length, the weight of the partial skein on a kitchen scale, the number of full skeins, and what the pattern needs. It reports the total length on hand, draws two comparison bars (have vs. need), and gives a verdict. Length can be toggled between yards and metres, and any entered length converts in place. A yarn "stash" of ball-band presets can be saved by name and recalled, persisted under <code>localStorage</code> key <code>skeinmath.v1</code>.</p>
+
+      <figure>
+        <img loading="lazy" src="/blog/img/PLACEHOLDER-skeinmath-sufficiency.png" alt="Skein and Gauge sufficiency panel showing have-vs-need bars and an amber close verdict">
+        <figcaption>The sufficiency panel with the have/need bars and verdict. Placeholder pending a real screenshot.</figcaption>
+      </figure>
+
+      <p><strong>Gauge conversion</strong> takes the pattern gauge, your gauge (per 4&nbsp;in or per 10&nbsp;cm), a stitch count, and an optional repeat. It reports the adjusted count, the pattern's intended finished dimension, and the "drift" — what the pattern's unmodified count would produce at your gauge if you ignored the mismatch and knit it as written.</p>
+
+      <h2>The math</h2>
+      <h3>Sufficiency</h3>
+      <p>Yardage from weight assumes even winding — length is proportional to mass:</p>
+      <pre><code>remaining = (partial_grams / ball_grams) × ball_length  +  full_skeins × ball_length</code></pre>
+      <p>The verdict wants margin, not just coverage, because seams, swatches, and one frogged section all eat yarn:</p>
+      <ul>
+        <li><strong>Enough</strong> (green) at &ge;110% of need.</li>
+        <li><strong>Close</strong> (amber) between 100% and 110% — with the advice to swatch from the working ball, not a fresh one.</li>
+        <li><strong>Short</strong> (red) below 100%, stating the deficit in both length and approximate ball count.</li>
+      </ul>
+
+      <h3>Gauge</h3>
+      <p>Conversion is a straight proportion of the two gauges:</p>
+      <pre><code>adjusted_count = pattern_count × (my_gauge / pattern_gauge)</code></pre>
+      <p>The same ratio converts row counts and shaping intervals. When gauge differs by more than 15% the tool notes that yardage shifts too.</p>
+
+      <h3>Repeat rounding</h3>
+      <p>A proportional result rarely lands on a legal stitch count for a patterned fabric. Instead of taking the raw number, the tool snaps it to the nearest value of the form "a multiple of <em>N</em>, plus <em>P</em>", checking the three nearest candidate multiples and picking whichever is closest to the unrounded target:</p>
+      <pre><code>base   = round((target - plus) / mult)
+cands  = [base-1, base, base+1] × mult + plus   (positive only)
+result = the candidate nearest target</code></pre>
+
+      <h2>Editing the config</h2>
+      <p>This tool is almost entirely input-driven — there is no facility table to tune. The two constants worth knowing are at the top of the <code>&lt;script&gt;</code> block: <code>YD_PER_M</code> (the yard/metre conversion factor) and <code>LS_KEY</code> (the storage key). The rounding behavior is the <code>roundToRepeat()</code> function; the sufficiency verdict thresholds (the 110% and 100% cutoffs) are inline in <code>calcYarn()</code>. Saved yarns are stored as a <code>stash</code> object keyed by name.</p>
+
+      <h2>Limitations</h2>
+      <ul>
+        <li>Weight-to-length assumes the ball band is accurate and the yarn is dry and evenly spun. A damp skein, a scale with a project bag still on it, or a mislabeled band all throw the estimate — the tool flags the specific case where a partial weighs more than a full ball.</li>
+        <li>Gauge conversion is linear in stitch count. It does not resize the pattern's shaping schedule for you beyond reporting the ratio; deep changes to a shaped garment still need the knitter's judgment.</li>
+        <li>The repeat rounding matches a single "multiple of N plus P" rule. Stitch patterns with two interacting repeats are not modeled.</li>
+      </ul>
+
+      <section>
+        <h2>References</h2>
+        <ol>
+          <li><a href="../../tools/skeinmath.html">Skein &amp; Gauge Calculator</a></li>
+        </ol>
+      </section>
+    </article>
+  </main>
+
+  <footer>
+    <hr>
+    <p>This website's source code is open and available on <a href="https://github.com/mds08011/kimberlytravel">Github</a>.</p>
+  </footer>
+</body>
+</html>
