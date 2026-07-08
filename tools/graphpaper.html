@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<!--
+  GRAPH PAPER — Gauge-True Chart Paper Generator
+  v1.0.0 · 2026-07-08
+  Fiber-arts / crafting suite, companion to rowcounter.html / skeinmath.html.
+  Single-file, offline, zero dependencies. No stored state.
+  Generates knitter's gauge-true grids (cells proportioned to stitch:row gauge,
+  so a charted motif knits up undistorted) and needlepoint mesh-count grids
+  (true square, sized to canvas count), printed at real physical scale with
+  bold rules every N cells for counting.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1b1512">
+<title>Graph Paper — Gauge-True Charts</title>
+<style>
+  :root{
+    --bg:#1b1512; --panel:#241c17; --panel2:#2d231c; --line:#3e3128;
+    --ink:#f0e7dc; --dim:#b3a494; --faint:#7d7062;
+    --madder:#e08484; --indigo:#8fa8dc; --weld:#d9a441; --leaf:#8fbf96;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --serif:"Iowan Old Style",Palatino,"Palatino Linotype",Georgia,serif;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;
+    line-height:1.5;padding:0 14px calc(28px + env(safe-area-inset-bottom))}
+  .wrap{max-width:680px;margin:0 auto}
+
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+    padding:20px 2px 14px;border-bottom:1px solid var(--line)}
+  h1{font-family:var(--serif);font-size:1.45rem;font-weight:600;font-style:italic}
+  h1 .amp{color:var(--madder)}
+  header .ver{font-family:var(--mono);font-size:.7rem;color:var(--faint)}
+
+  section{margin-top:20px}
+  h2{font-family:var(--serif);font-size:1.08rem;font-weight:600;font-style:italic;
+    display:flex;align-items:center;gap:10px;margin-bottom:4px}
+  h2::after{content:"";flex:1;height:1px;background:var(--line)}
+  .sub{font-size:.8rem;color:var(--dim);margin-bottom:12px}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+
+  .toolrow{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;flex-wrap:wrap}
+  .seg button{appearance:none;border:none;background:var(--panel2);color:var(--dim);
+    padding:7px 12px;font-size:.8rem;font-weight:700;cursor:pointer}
+  .seg button[aria-pressed="true"]{background:var(--madder);color:#2a1414}
+  .seg button:focus-visible,.btn:focus-visible,select:focus-visible{outline:2px solid var(--madder);outline-offset:-2px}
+
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  @media(max-width:430px){.grid{grid-template-columns:1fr 1fr}}
+  .field{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+  .field label{display:block;font-size:.62rem;font-weight:700;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--dim);margin-bottom:3px}
+  .field input,.field select{width:100%;background:transparent;border:none;color:var(--ink);
+    font-family:var(--mono);font-size:1.1rem;font-weight:600;padding:0;color-scheme:dark}
+  .field input:focus,.field select:focus{outline:none}
+  .field:focus-within{border-color:var(--madder)}
+  .field select{appearance:none;font-size:.95rem;padding:3px 0}
+  input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  input[type=number]{-moz-appearance:textfield}
+
+  .facts{font-family:var(--mono);font-size:.78rem;color:var(--dim);margin-top:10px;line-height:1.6}
+  .facts b{color:var(--ink)}
+
+  .rowbtns{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .btn{appearance:none;border:1px solid var(--line);background:var(--panel2);color:var(--ink);
+    border-radius:8px;padding:10px 15px;font-size:.86rem;font-weight:600;cursor:pointer}
+  .btn:active{background:var(--panel)}
+  .btn.primary{border-color:var(--madder);color:var(--madder)}
+
+  /* preview */
+  .previewwrap{margin-top:16px}
+  .previewcard{background:#fbf7f0;border:1px solid var(--line);border-radius:10px;
+    padding:10px;overflow:auto}
+  .previewcard svg{display:block;width:100%;height:auto;max-height:none}
+  .plabel{font-size:.7rem;color:var(--faint);margin-bottom:6px;font-family:var(--mono)}
+
+  footer{margin-top:28px;border-top:1px solid var(--line);padding-top:12px;
+    font-size:.75rem;color:var(--faint);line-height:1.65}
+  footer code{font-family:var(--mono)}
+
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(8px);
+    background:var(--panel2);border:1px solid var(--madder);color:var(--ink);border-radius:8px;
+    padding:8px 16px;font-size:.85rem;opacity:0;pointer-events:none;
+    transition:opacity .2s,transform .2s;max-width:90vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media (prefers-reduced-motion:reduce){.toast{transition:none}}
+
+  /* ---- PRINT: only the sheet, at true physical size ---- */
+  @media print{
+    @page{ margin:0.5in; }
+    body{background:#fff;padding:0}
+    .wrap>header, section.setup, footer, .toast, .rowbtns, .plabel{display:none !important}
+    .previewwrap{margin:0}
+    .previewcard{border:none;border-radius:0;padding:0;background:#fff;overflow:visible}
+    #sheet{width:auto;height:auto}
+    #printhead{display:block !important}
+  }
+  #printhead{display:none;font-family:var(--sans);font-size:9pt;color:#333;margin-bottom:6pt}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Graph <span class="amp">Paper</span></h1>
+    <span class="ver">gauge-true · v1.0.0 · offline</span>
+  </header>
+
+  <section class="setup" aria-label="Grid setup">
+    <h2>Grid</h2>
+    <p class="sub">Prints at true physical size — set your printer to 100% / "Actual size", not "Fit".</p>
+    <div class="card">
+      <div class="toolrow">
+        <span class="seg" role="group" aria-label="Grid mode">
+          <button type="button" data-mode="knit" aria-pressed="true">Knitter's gauge</button>
+          <button type="button" data-mode="mesh" aria-pressed="false">Needlepoint mesh</button>
+        </span>
+      </div>
+
+      <div class="grid" id="knitFields">
+        <div class="field"><label for="stG" id="stGLabel">Stitches / 4 in</label>
+          <input id="stG" type="number" inputmode="decimal" step="0.5" placeholder="18"></div>
+        <div class="field"><label for="rowG" id="rowGLabel">Rows / 4 in</label>
+          <input id="rowG" type="number" inputmode="decimal" step="0.5" placeholder="24"></div>
+        <div class="field"><label for="heavy1">Bold line every</label>
+          <input id="heavy1" type="number" inputmode="numeric" step="1" placeholder="10"></div>
+      </div>
+
+      <div class="grid" id="meshFields" hidden>
+        <div class="field"><label for="mesh">Mesh count (holes / in)</label>
+          <input id="mesh" type="number" inputmode="decimal" step="1" placeholder="14"></div>
+        <div class="field"><label for="heavy2">Bold line every</label>
+          <input id="heavy2" type="number" inputmode="numeric" step="1" placeholder="10"></div>
+      </div>
+
+      <div class="toolrow" style="margin-top:12px;margin-bottom:0">
+        <span class="seg" role="group" aria-label="Paper size">
+          <button type="button" data-paper="letter" aria-pressed="true">Letter</button>
+          <button type="button" data-paper="a4" aria-pressed="false">A4</button>
+        </span>
+        <span class="seg" role="group" aria-label="Orientation">
+          <button type="button" data-orient="portrait" aria-pressed="true">Portrait</button>
+          <button type="button" data-orient="landscape" aria-pressed="false">Landscape</button>
+        </span>
+      </div>
+
+      <div class="facts" id="facts"></div>
+      <div class="rowbtns">
+        <button class="btn primary" id="printBtn" type="button">Print sheet</button>
+      </div>
+    </div>
+  </section>
+
+  <section aria-label="Preview">
+    <div class="previewwrap">
+      <div class="plabel" id="plabel">Preview — screen scale is approximate; print output is true size.</div>
+      <div class="previewcard">
+        <div id="printhead"></div>
+        <div id="sheet"></div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Knitting stitches are wider than they are tall, so charting on square paper distorts the
+    design — a circle charted on squares knits as an oval. Cell width÷height here equals your
+    <code>row gauge ÷ stitch gauge</code>, so what you chart is what you knit. Needlepoint mode
+    draws true squares sized to canvas mesh count. Bold rules every N cells make counting fast.
+    Nothing is stored; adjust and reprint freely. Set the printer to <b>100% / Actual size</b>
+    or the physical scale is lost.
+  </footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* No persisted state — this is a generator. UI state is in-memory only. */
+const U = { mode:"knit", paper:"letter", orient:"portrait" };
+const PAPER = { letter:{w:8.5,h:11}, a4:{w:8.2677,h:11.6929} };  // inches
+const MARGIN = 0.5;
+const $   = id => document.getElementById(id);
+const num = v => { const n=parseFloat(v); return Number.isFinite(n)&&n>0 ? n : null; };
+const r3  = x => Math.round(x*1000)/1000;
+
+/* printable area in inches for current paper/orientation */
+function printable(){
+  const p=PAPER[U.paper];
+  let w=p.w-2*MARGIN, h=p.h-2*MARGIN;
+  if(U.orient==="landscape"){ const t=w; w=h; h=t; }
+  return { w, h };
+}
+
+/* compute cell dimensions (inches) for the active mode */
+function cellDims(){
+  if(U.mode==="knit"){
+    const st=num($("stG").value), row=num($("rowG").value);
+    if(!st || !row) return null;
+    return { cw:4/st, ch:4/row, heavy:Math.max(1,Math.round(num($("heavy1").value)||10)),
+             stG:st, rowG:row };
+  } else {
+    const m=num($("mesh").value);
+    if(!m) return null;
+    return { cw:1/m, ch:1/m, heavy:Math.max(1,Math.round(num($("heavy2").value)||10)), mesh:m };
+  }
+}
+
+/* build the SVG grid at true physical size (inches as SVG user units) */
+function buildSVG(forPrint){
+  const d=cellDims(); if(!d) return {svg:"", facts:"Enter your gauge to generate the grid."};
+  const area=printable();
+  const cols=Math.floor(area.w/d.cw), rows=Math.floor(area.h/d.ch);
+  if(cols<1 || rows<1) return {svg:"", facts:"Cells are larger than the page — check your numbers."};
+  const gw=cols*d.cw, gh=rows*d.ch;
+  const thin=0.006, bold=0.018;   // inch stroke widths
+  const thinCol="#9aa7b0", boldCol="#3a4048";
+  let lines="";
+  // verticals
+  for(let c=0;c<=cols;c++){
+    const x=r3(c*d.cw), heavy=(c % d.heavy===0);
+    lines+='<line x1="'+x+'" y1="0" x2="'+x+'" y2="'+r3(gh)+'" stroke="'+(heavy?boldCol:thinCol)+
+      '" stroke-width="'+(heavy?bold:thin)+'"/>';
+  }
+  // horizontals
+  for(let r=0;r<=rows;r++){
+    const y=r3(r*d.ch), heavy=(r % d.heavy===0);
+    lines+='<line x1="0" y1="'+y+'" x2="'+r3(gw)+'" y2="'+y+'" stroke="'+(heavy?boldCol:thinCol)+
+      '" stroke-width="'+(heavy?bold:thin)+'"/>';
+  }
+  const svg='<svg id="gridsvg" width="'+r3(gw)+'in" height="'+r3(gh)+'in" '+
+    'viewBox="0 0 '+r3(gw)+' '+r3(gh)+'" xmlns="http://www.w3.org/2000/svg" '+
+    (forPrint?'':'preserveAspectRatio="xMidYMid meet" style="max-width:100%;height:auto"')+'>'+
+    '<rect x="0" y="0" width="'+r3(gw)+'" height="'+r3(gh)+'" fill="#fbf7f0"/>'+lines+'</svg>';
+
+  const facts = U.mode==="knit"
+    ? 'Cell <b>'+r3(d.cw)+'in</b> × <b>'+r3(d.ch)+'in</b> (aspect '+r3(d.cw/d.ch)+
+      ') · grid <b>'+cols+' sts × '+rows+' rows</b> · '+r3(gw)+'×'+r3(gh)+'in'
+    : 'Cell <b>'+r3(d.cw)+'in</b> square ('+d.mesh+'-count) · grid <b>'+cols+' × '+rows+
+      '</b> holes · '+r3(gw)+'×'+r3(gh)+'in';
+  const head = U.mode==="knit"
+    ? 'Gauge-true chart — '+d.stG+' sts / '+d.rowG+' rows per 4in — '+cols+'×'+rows+' — bold every '+d.heavy
+    : 'Needlepoint '+d.mesh+'-count — '+cols+'×'+rows+' holes — bold every '+d.heavy;
+  return { svg, facts, head };
+}
+
+function render(){
+  const out=buildSVG(false);
+  $("sheet").innerHTML=out.svg || '<div style="color:#999;padding:24px;text-align:center;font-family:var(--sans)">'+(out.facts||"")+'</div>';
+  $("facts").innerHTML=out.facts||"";
+  $("printhead").textContent=out.head||"";
+}
+
+/* ================= events ================= */
+document.querySelectorAll("[data-mode]").forEach(b=>b.addEventListener("click", ()=>{
+  U.mode=b.dataset.mode;
+  $("knitFields").hidden = U.mode!=="knit";
+  $("meshFields").hidden = U.mode==="knit";
+  document.querySelectorAll("[data-mode]").forEach(x=>x.setAttribute("aria-pressed", x.dataset.mode===U.mode));
+  render();
+}));
+document.querySelectorAll("[data-paper]").forEach(b=>b.addEventListener("click", ()=>{
+  U.paper=b.dataset.paper;
+  document.querySelectorAll("[data-paper]").forEach(x=>x.setAttribute("aria-pressed", x.dataset.paper===U.paper));
+  render();
+}));
+document.querySelectorAll("[data-orient]").forEach(b=>b.addEventListener("click", ()=>{
+  U.orient=b.dataset.orient;
+  document.querySelectorAll("[data-orient]").forEach(x=>x.setAttribute("aria-pressed", x.dataset.orient===U.orient));
+  render();
+}));
+["stG","rowG","heavy1","mesh","heavy2"].forEach(id=>$(id).addEventListener("input", render));
+$("printBtn").addEventListener("click", ()=>{
+  // swap in a print-optimized (non-scaled) SVG, print, then restore responsive one
+  const out=buildSVG(true);
+  if(!out.svg){ toast("Enter your gauge first"); return; }
+  const saved=$("sheet").innerHTML;
+  $("sheet").innerHTML=out.svg;
+  const restore=()=>{ $("sheet").innerHTML=saved; window.removeEventListener("afterprint",restore); };
+  window.addEventListener("afterprint",restore);
+  setTimeout(()=>window.print(),50);
+});
+function toast(m){ const t=$("toast"); t.textContent=m; t.classList.add("show");
+  clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove("show"),1900); }
+
+render();
+</script>
+</body>
+</html>

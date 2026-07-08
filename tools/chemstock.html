@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<!--
+  CHEM STOCK — Chemical Inventory Burn-Rate Forecaster
+  v1.0.0 · 2026-07-08
+  Aquatics suite, companion to pumproom.html / readingqueue.html / rotation.html.
+  Single-file, offline, zero dependencies.
+  Log tank/drum levels whenever someone is in the chem room; the tool derives
+  consumption rate from the history (delivery-aware), projects days-to-empty,
+  and flags reorder-by dates against supplier lead times.
+  Products, capacities, and lead times are hardcoded in PRODUCTS below.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#10181d">
+<title>Chem Stock — Inventory Forecast</title>
+<style>
+  :root{
+    --bg:#10181d; --panel:#17232b; --panel2:#1c2a34; --line:#2a3b46;
+    --ink:#e9f1f4; --dim:#8ba1ac; --faint:#5d7280;
+    --water:#46c8dd; --chlor:#f2c53d; --acid:#e5534b; --ok:#55c98c;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;
+    line-height:1.45;padding:0 14px calc(28px + env(safe-area-inset-bottom))}
+  .wrap{max-width:760px;margin:0 auto}
+
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+    padding:18px 2px 12px;border-bottom:1px solid var(--line)}
+  h1{font-size:1.05rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+  h1 .tick{color:var(--water)}
+  header .ver{font-family:var(--mono);font-size:.7rem;color:var(--faint)}
+
+  .microlabel{font-size:.66rem;font-weight:700;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--dim)}
+  section{margin-top:20px}
+  .sechead{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .sechead::after{content:"";flex:1;height:1px;background:var(--line)}
+  .sechead .count{font-family:var(--mono);font-size:.72rem;color:var(--faint)}
+
+  /* product overview cards */
+  .prods{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .prod{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink);
+    border-radius:10px;padding:10px 12px;text-align:left;cursor:pointer;
+    display:flex;gap:10px;align-items:center;min-height:74px}
+  .prod[aria-pressed="true"]{border-color:var(--water);background:var(--panel2);
+    box-shadow:inset 0 0 0 1px var(--water)}
+  .prod:focus-visible,.btn:focus-visible{outline:2px solid var(--water);outline-offset:2px}
+  .prod .mini{flex:none;width:20px;height:44px;border:1.5px solid var(--line);
+    border-radius:4px 4px 5px 5px;position:relative;overflow:hidden;background:var(--bg)}
+  .prod .mini .fill{position:absolute;left:0;right:0;bottom:0;background:var(--water)}
+  .prod .meta{flex:1;min-width:0}
+  .prod .pname{font-weight:700;font-size:.85rem;line-height:1.25}
+  .prod .pstat{font-family:var(--mono);font-size:.72rem;margin-top:2px;color:var(--dim)}
+  .prod .pstat.ok{color:var(--ok)} .prod .pstat.soon{color:var(--chlor)}
+  .prod .pstat.now{color:var(--acid)} 
+
+  /* detail card */
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:14px;margin-top:10px}
+  .detail{display:flex;gap:16px;align-items:stretch}
+  .tankbox{flex:0 0 108px}
+  .tankbox svg{display:block;width:100%;height:auto}
+  .nums{flex:1;min-width:0}
+  .bignum{font-family:var(--mono);font-size:1.7rem;font-weight:700;color:var(--water)}
+  .bignum small{font-size:.85rem;color:var(--dim);font-weight:600}
+  .nline{font-family:var(--mono);font-size:.82rem;color:var(--dim);margin-top:5px}
+  .nline b{color:var(--ink)}
+  .nline.now b{color:var(--acid)} .nline.soon b{color:var(--chlor)} .nline.ok b{color:var(--ok)}
+
+  .hazard{display:none;margin-top:12px;border:1px solid var(--acid);border-radius:10px;
+    background:var(--panel);overflow:hidden}
+  .hazard.show{display:block}
+  .hazard .stripe{height:8px;
+    background:repeating-linear-gradient(-45deg,var(--chlor) 0 10px,#0e1418 10px 20px)}
+  .hazard .msg{padding:10px 12px;font-size:.86rem}
+  .hazard .msg b{color:var(--acid)}
+
+  /* log form */
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .field{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+  .field label{display:block;font-size:.64rem;font-weight:700;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--dim);margin-bottom:3px}
+  .field input{width:100%;background:transparent;border:none;color:var(--ink);
+    font-family:var(--mono);font-size:1.15rem;font-weight:600;padding:0;color-scheme:dark}
+  .field input:focus{outline:none}
+  .field:focus-within{border-color:var(--water)}
+  input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  input[type=number]{-moz-appearance:textfield}
+
+  .rowbtns{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .btn{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink);
+    border-radius:8px;padding:10px 14px;font-size:.86rem;font-weight:600;cursor:pointer}
+  .btn:active{background:var(--panel2)}
+  .btn.primary{border-color:var(--water);color:var(--water)}
+  .btn.big{flex:1;padding:12px 14px;font-size:.95rem}
+  .btn[disabled]{opacity:.4;cursor:default}
+
+  /* history ledger */
+  .hist{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-top:10px}
+  .hrow{display:flex;gap:10px;align-items:center;padding:9px 12px;
+    background:var(--panel);border-bottom:1px solid var(--line);font-size:.84rem}
+  .hrow:last-child{border-bottom:none}
+  .hrow .ht{font-family:var(--mono);color:var(--dim);flex:0 0 122px;font-size:.76rem}
+  .hrow .hl{font-family:var(--mono);flex:1}
+  .hrow .hd{color:var(--chlor);font-size:.7rem;font-weight:800;letter-spacing:.1em}
+  .hrow .x{appearance:none;border:1px solid var(--line);background:var(--panel2);
+    color:var(--dim);border-radius:7px;width:32px;height:32px;cursor:pointer;flex:none}
+  .empty{padding:20px 14px;text-align:center;color:var(--faint);font-size:.85rem;
+    background:var(--panel)}
+
+  footer{margin-top:26px;border-top:1px solid var(--line);padding-top:12px;
+    font-size:.74rem;color:var(--faint);line-height:1.6}
+  footer code{font-family:var(--mono)}
+
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(8px);
+    background:var(--panel2);border:1px solid var(--water);color:var(--ink);border-radius:8px;
+    padding:8px 16px;font-size:.85rem;opacity:0;pointer-events:none;
+    transition:opacity .2s,transform .2s;max-width:90vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media (prefers-reduced-motion:reduce){.toast{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1><span class="tick">▮</span> Chem Stock</h1>
+    <span class="ver">inventory forecast · v1.0.0 · offline</span>
+  </header>
+
+  <section aria-label="Products">
+    <div class="sechead"><span class="microlabel">Products</span></div>
+    <div class="prods" id="prods"></div>
+    <div class="hazard" id="hazard" role="alert">
+      <div class="stripe"></div><div class="msg" id="hazardMsg"></div>
+    </div>
+  </section>
+
+  <section aria-label="Forecast">
+    <div class="sechead"><span class="microlabel" id="detailName">Forecast</span></div>
+    <div class="card">
+      <div class="detail">
+        <div class="tankbox" id="tankbox"></div>
+        <div class="nums" id="nums"></div>
+      </div>
+    </div>
+  </section>
+
+  <section aria-label="Log a reading">
+    <div class="sechead"><span class="microlabel">Log Reading</span></div>
+    <div class="grid">
+      <div class="field"><label for="inLevel" id="levelLabel">Level</label>
+        <input id="inLevel" type="number" inputmode="decimal" step="0.1" placeholder="—"></div>
+      <div class="field"><label for="inWhen">When</label>
+        <input id="inWhen" type="datetime-local"></div>
+    </div>
+    <div class="rowbtns">
+      <button class="btn primary big" id="addBtn" type="button">＋ Log reading</button>
+    </div>
+  </section>
+
+  <section aria-label="History">
+    <div class="sechead"><span class="microlabel">History</span>
+      <span class="count" id="histCount"></span></div>
+    <div class="hist" id="hist"></div>
+    <div class="rowbtns">
+      <button class="btn primary" id="copyStatus" type="button">Copy status (all products)</button>
+      <button class="btn" id="csvBtn" type="button">Export CSV</button>
+    </div>
+  </section>
+
+  <footer>
+    Burn rate comes from consecutive level drops in the trailing
+    <b id="ftWin"></b>-day window; a level <i>increase</i> larger than 5% of capacity is
+    treated as a delivery and excluded (▲ in the history), smaller wobbles count as
+    measurement noise. Reorder-by = projected empty − lead time − <b id="ftSafe"></b>-day
+    safety buffer. Capacities and lead times are set in the <code>PRODUCTS</code> table at
+    the top of the script — match them to your actual tanks and supplier terms.
+    History lives in this browser only (<code>localStorage</code>); export the CSV
+    periodically as backup and for budget season.
+  </footer>
+</div>
+
+<div class="toast" id="toast">Logged</div>
+
+<script>
+"use strict";
+/* ============ CONFIG — edit products, capacities, lead times here ============ */
+const PRODUCTS = [
+  { id:"naocl",   name:"Liquid Chlorine 12.5%", unit:"gal", capacity:500, leadDays:5 },
+  { id:"ma",      name:"Muriatic Acid 31.45%",  unit:"gal", capacity:110, leadDays:5 },
+  { id:"calhypo", name:"Cal-Hypo 65%",          unit:"lb",  capacity:400, leadDays:7 },
+  { id:"cya",     name:"Cyanuric Acid",         unit:"lb",  capacity:200, leadDays:7 },
+];
+const SAFETY_DAYS = 3;     // buffer on top of supplier lead time
+const SOON_DAYS   = 7;     // "order soon" window ahead of the reorder-by date
+const WINDOW_DAYS = 45;    // trailing window used for the rate calculation
+const NOISE_FRAC  = 0.05;  // level increase below this fraction of capacity = noise, not delivery
+const LS_KEY = "chemstock.v1";
+const DAY = 864e5;
+
+/* ================= state ================= */
+let S = load();
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw){ const p = JSON.parse(raw); if(p && p.hist) return p; }
+  }catch(e){}
+  const s = { active:PRODUCTS[0].id, hist:{} };
+  PRODUCTS.forEach(p=>s.hist[p.id]=[]);   // [{iso, level}]
+  return s;
+}
+function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){} }
+const $    = id => document.getElementById(id);
+const esc  = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const prod = id => PRODUCTS.find(p=>p.id===(id||S.active));
+const hist = id => (S.hist[id||S.active] = S.hist[id||S.active] || []);
+const num  = v => { const n=parseFloat(v); return Number.isFinite(n)&&n>=0 ? n : null; };
+const r1   = x => Math.round(x*10)/10;
+const fdate= iso => new Date(iso).toLocaleDateString([],{month:"2-digit",day:"2-digit"});
+const fdt  = iso => new Date(iso).toLocaleString([],{month:"numeric",day:"numeric",hour:"numeric",minute:"2-digit"});
+
+/* ================= burn-rate engine ================= */
+/* Consecutive-drop consumption over the trailing window.
+   Rises > NOISE_FRAC×capacity = delivery (pair excluded, flagged);
+   smaller rises = noise (time counts, consumption doesn't). */
+function analyze(p){
+  const rows = hist(p.id).slice().sort((a,b)=>new Date(a.iso)-new Date(b.iso));
+  const cutoff = Date.now() - WINDOW_DAYS*DAY;
+  const win = rows.filter(r=>new Date(r.iso).getTime() >= cutoff);
+  const noise = p.capacity*NOISE_FRAC;
+  let consumed=0, days=0;
+  const deliveryIso = new Set();
+  for(let i=1;i<win.length;i++){
+    const d  = win[i-1].level - win[i].level;
+    const dt = (new Date(win[i].iso) - new Date(win[i-1].iso))/DAY;
+    if(dt<=0) continue;
+    if(d >= 0){ consumed += d; days += dt; }
+    else if(-d < noise){ days += dt; }
+    else deliveryIso.add(win[i].iso);
+  }
+  const last = rows.length ? rows[rows.length-1] : null;
+  const rate = (days > 0.5 && consumed > 0) ? consumed/days : null;
+  let daysLeft=null, emptyAt=null, reorderBy=null, status="none";
+  if(last && rate){
+    daysLeft  = last.level/rate;
+    emptyAt   = new Date(new Date(last.iso).getTime() + daysLeft*DAY);
+    reorderBy = new Date(emptyAt.getTime() - (p.leadDays+SAFETY_DAYS)*DAY);
+    const now = Date.now();
+    status = now >= reorderBy.getTime() ? "now"
+           : now >= reorderBy.getTime() - SOON_DAYS*DAY ? "soon" : "ok";
+  } else if(last){ status = "logging"; }
+  return { rows, last, rate, daysLeft, emptyAt, reorderBy, status, deliveryIso };
+}
+
+/* ================= tank gauge (signature) ================= */
+function drawTank(p, a){
+  const W=54, H=120, x=6, y=8, tw=W-12, th=H-16;
+  const frac = a.last ? Math.min(1, Math.max(0, a.last.level/p.capacity)) : 0;
+  const fh = th*frac, fy = y+th-fh;
+  const col = a.status==="now" ? "var(--acid)" : a.status==="soon" ? "var(--chlor)" : "var(--water)";
+  const el=[];
+  el.push('<rect x="'+x+'" y="'+y+'" width="'+tw+'" height="'+th+'" rx="6" fill="var(--bg)" stroke="var(--line)" stroke-width="1.5"/>');
+  if(frac>0) el.push('<rect x="'+(x+1.5)+'" y="'+fy+'" width="'+(tw-3)+'" height="'+Math.max(2,fh-1.5)+'" rx="4.5" fill="'+col+'" fill-opacity="0.75"/>');
+  for(let i=1;i<4;i++){ // quarter ticks
+    const ty=y+th*i/4;
+    el.push('<line x1="'+x+'" y1="'+ty+'" x2="'+(x+5)+'" y2="'+ty+'" stroke="var(--faint)" stroke-width="1"/>');
+  }
+  // reorder threshold line: level at which daysLeft = leadDays+SAFETY (needs a rate)
+  if(a.rate){
+    const thresh = Math.min(1, a.rate*(p.leadDays+SAFETY_DAYS)/p.capacity);
+    const ry = y+th*(1-thresh);
+    el.push('<line x1="'+(x-3)+'" y1="'+ry+'" x2="'+(x+tw+3)+'" y2="'+ry+'" stroke="var(--acid)" stroke-width="1.4" stroke-dasharray="3 2.2"/>');
+    el.push('<text x="'+(x+tw+5)+'" y="'+(ry+3)+'" fill="var(--acid)" font-size="7" style="font-family:var(--mono)">reorder</text>');
+  }
+  el.push('<text x="'+(x+tw/2)+'" y="'+(H+8)+'" fill="var(--dim)" font-size="9" text-anchor="middle" style="font-family:var(--mono)">'+Math.round(frac*100)+'%</text>');
+  $("tankbox").innerHTML = '<svg viewBox="0 0 96 '+(H+14)+'" role="img" aria-label="Tank level gauge">'+el.join("")+'</svg>';
+}
+
+/* ================= render ================= */
+function statusText(a, p){
+  if(a.status==="none")    return "no readings";
+  if(a.status==="logging") return "logging — need more readings";
+  if(a.status==="now")     return "ORDER NOW";
+  if(a.status==="soon")    return "order by "+fdate(a.reorderBy.toISOString());
+  return r1(a.daysLeft)+" days left";
+}
+function renderProds(){
+  let hazards=[];
+  $("prods").innerHTML = PRODUCTS.map(p=>{
+    const a = analyze(p);
+    const frac = a.last ? Math.min(1, a.last.level/p.capacity) : 0;
+    if(a.status==="now") hazards.push('<b>'+esc(p.name)+'</b> — projected empty '+fdate(a.emptyAt.toISOString())+', lead time '+p.leadDays+' d. Order today.');
+    return '<button class="prod" type="button" data-id="'+p.id+'" aria-pressed="'+(p.id===S.active)+'">'+
+      '<span class="mini"><span class="fill" style="height:'+Math.round(frac*100)+'%"></span></span>'+
+      '<span class="meta"><span class="pname">'+esc(p.name)+'</span>'+
+      '<span class="pstat '+a.status+'">'+statusText(a,p)+'</span></span></button>';
+  }).join("");
+  $("hazard").classList.toggle("show", hazards.length>0);
+  $("hazardMsg").innerHTML = hazards.join("<br>");
+}
+function renderDetail(){
+  const p = prod(), a = analyze(p);
+  $("detailName").textContent = p.name;
+  $("levelLabel").textContent = "Level ("+p.unit+")";
+  drawTank(p, a);
+  const L=[];
+  L.push('<span class="bignum">'+(a.last?r1(a.last.level):"—")+' <small>'+p.unit+' of '+p.capacity+'</small></span>');
+  if(a.last) L.push('<div class="nline">last reading <b>'+fdt(a.last.iso)+'</b></div>');
+  if(a.rate){
+    L.push('<div class="nline">burn rate <b>'+r1(a.rate)+' '+p.unit+'/day</b> <span style="color:var(--faint)">(trailing '+WINDOW_DAYS+' d)</span></div>');
+    L.push('<div class="nline">projected empty <b>'+a.emptyAt.toLocaleDateString([],{weekday:"short",month:"2-digit",day:"2-digit"})+'</b> ('+r1(a.daysLeft)+' d)</div>');
+    L.push('<div class="nline '+a.status+'">reorder by <b>'+a.reorderBy.toLocaleDateString([],{weekday:"short",month:"2-digit",day:"2-digit"})+'</b> <span style="color:var(--faint)">(lead '+p.leadDays+' d + '+SAFETY_DAYS+' d buffer)</span></div>');
+  } else {
+    L.push('<div class="nline">burn rate <b>—</b> log a few readings across different days</div>');
+  }
+  $("nums").innerHTML = L.join("");
+}
+function renderHist(){
+  const p=prod(), a=analyze(p);
+  const rows = a.rows.slice().reverse();
+  $("histCount").textContent = rows.length ? rows.length+" readings" : "";
+  $("csvBtn").disabled = PRODUCTS.every(x=>hist(x.id).length===0);
+  if(!rows.length){
+    $("hist").innerHTML = '<div class="empty">No readings for '+esc(p.name)+' yet.</div>';
+    return;
+  }
+  $("hist").innerHTML = rows.map(r=>
+    '<div class="hrow" data-iso="'+r.iso+'">'+
+      '<span class="ht">'+fdt(r.iso)+'</span>'+
+      '<span class="hl">'+r1(r.level)+' '+p.unit+
+        (a.deliveryIso.has(r.iso)?' <span class="hd">▲ delivery</span>':'')+'</span>'+
+      '<button class="x" type="button" aria-label="Delete reading">✕</button>'+
+    '</div>').join("");
+}
+function renderAll(){ renderProds(); renderDetail(); renderHist(); }
+
+/* ================= copy / csv ================= */
+function toast(msg){
+  const t=$("toast"); t.textContent=msg;
+  t.classList.add("show"); clearTimeout(toast._t);
+  toast._t=setTimeout(()=>t.classList.remove("show"),1900);
+}
+function copyText(text,okMsg){
+  const done=ok=>toast(ok?okMsg:"Copy failed — long-press to select");
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(()=>done(true)).catch(()=>fallbackCopy(text,done));
+  } else fallbackCopy(text,done);
+}
+function fallbackCopy(text,done){
+  const ta=document.createElement("textarea");
+  ta.value=text; ta.style.position="fixed"; ta.style.opacity="0";
+  document.body.appendChild(ta); ta.select();
+  let ok=false; try{ ok=document.execCommand("copy"); }catch(e){}
+  document.body.removeChild(ta); done(ok);
+}
+$("copyStatus").addEventListener("click", ()=>{
+  const d=new Date();
+  const lines = ["CHEM STOCK — "+d.toLocaleDateString([],{month:"2-digit",day:"2-digit"})];
+  for(const p of PRODUCTS){
+    const a=analyze(p);
+    if(!a.last){ lines.push(p.name+": no readings"); continue; }
+    let s = p.name+": "+r1(a.last.level)+" "+p.unit+" ("+Math.round(a.last.level/p.capacity*100)+"%)";
+    if(a.rate){
+      s += " — ~"+r1(a.daysLeft)+" d left, reorder by "+fdate(a.reorderBy.toISOString());
+      if(a.status==="now") s += "  ⚠ ORDER NOW";
+    }
+    lines.push(s);
+  }
+  copyText(lines.join("\n"), "Status copied — paste into DigiQuatics");
+});
+$("csvBtn").addEventListener("click", ()=>{
+  const q=s=>{s=s==null?"":String(s);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
+  const out=["product,unit,datetime_iso,level,flag"];
+  for(const p of PRODUCTS){
+    const a=analyze(p);
+    for(const r of a.rows)
+      out.push([p.name,p.unit,r.iso,r.level,a.deliveryIso.has(r.iso)?"delivery":""].map(q).join(","));
+  }
+  const blob=new Blob(["\uFEFF"+out.join("\r\n")],{type:"text/csv;charset=utf-8"});
+  const url=URL.createObjectURL(blob), aEl=document.createElement("a");
+  aEl.href=url; aEl.download="chem-stock-"+new Date().toISOString().slice(0,10)+".csv";
+  document.body.appendChild(aEl); aEl.click(); aEl.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),4000);
+  toast("CSV exported");
+});
+
+/* ================= events ================= */
+function nowLocal(){
+  const d=new Date(); d.setSeconds(0,0);
+  const off=d.getTimezoneOffset();
+  return new Date(d.getTime()-off*60000).toISOString().slice(0,16);
+}
+$("prods").addEventListener("click", e=>{
+  const b=e.target.closest(".prod"); if(!b) return;
+  S.active=b.dataset.id; save(); renderAll();
+});
+$("addBtn").addEventListener("click", ()=>{
+  const lvl=num($("inLevel").value);
+  if(lvl==null){ toast("Enter a level"); return; }
+  const p=prod();
+  if(lvl > p.capacity*1.15){ toast("That's over tank capacity — check the number"); return; }
+  const when=$("inWhen").value ? new Date($("inWhen").value) : new Date();
+  hist(p.id).push({iso:when.toISOString(), level:lvl});
+  hist(p.id).sort((a,b)=>new Date(a.iso)-new Date(b.iso));
+  save();
+  $("inLevel").value=""; $("inWhen").value=nowLocal();
+  renderAll();
+  toast("Logged — "+p.name+" "+r1(lvl)+" "+p.unit);
+});
+$("hist").addEventListener("click", e=>{
+  if(!e.target.classList.contains("x")) return;
+  const iso=e.target.closest(".hrow").dataset.iso;
+  if(!confirm("Delete this reading?")) return;
+  const h=hist();
+  const i=h.findIndex(r=>r.iso===iso);
+  if(i>=0) h.splice(i,1);
+  save(); renderAll();
+});
+
+/* ================= init ================= */
+$("inWhen").value = nowLocal();
+$("ftWin").textContent = WINDOW_DAYS;
+$("ftSafe").textContent = SAFETY_DAYS;
+renderAll();
+</script>
+</body>
+</html>

@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<!--
+  CRAFT PRICE — Craft Job Cost & Pricing Calculator
+  v1.0.0 · 2026-07-08
+  Fiber-arts / crafting suite, companion to htv.html.
+  Single-file, offline, zero dependencies.
+  Per-piece cost accounting (blank + vinyl consumed + labor + overhead),
+  suggested price at a target margin OR markup, and a whole-job quote block.
+  Inches-of-vinyl-per-piece pairs with htv.html's cut-list output.
+  Material presets persist in localStorage.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1b1512">
+<title>Craft Price — Job Costing</title>
+<style>
+  :root{
+    --bg:#1b1512; --panel:#241c17; --panel2:#2d231c; --line:#3e3128;
+    --ink:#f0e7dc; --dim:#b3a494; --faint:#7d7062;
+    --madder:#e08484; --indigo:#8fa8dc; --weld:#d9a441; --leaf:#8fbf96;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --serif:"Iowan Old Style",Palatino,"Palatino Linotype",Georgia,serif;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;
+    line-height:1.5;padding:0 14px calc(28px + env(safe-area-inset-bottom))}
+  .wrap{max-width:680px;margin:0 auto}
+
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+    padding:20px 2px 14px;border-bottom:1px solid var(--line)}
+  h1{font-family:var(--serif);font-size:1.45rem;font-weight:600;font-style:italic}
+  h1 .amp{color:var(--madder)}
+  header .ver{font-family:var(--mono);font-size:.7rem;color:var(--faint)}
+
+  section{margin-top:20px}
+  h2{font-family:var(--serif);font-size:1.08rem;font-weight:600;font-style:italic;
+    display:flex;align-items:center;gap:10px;margin-bottom:4px}
+  h2::after{content:"";flex:1;height:1px;background:var(--line)}
+  .sub{font-size:.8rem;color:var(--dim);margin-bottom:12px}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+
+  .toolrow{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+  .presetsel{flex:1;min-width:150px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:8px;color:var(--ink);font-size:.85rem;padding:8px 10px;appearance:none}
+  .btn{appearance:none;border:1px solid var(--line);background:var(--panel2);color:var(--ink);
+    border-radius:8px;padding:8px 13px;font-size:.82rem;font-weight:600;cursor:pointer}
+  .btn:active{background:var(--panel)}
+  .btn.primary{border-color:var(--madder);color:var(--madder)}
+  .btn:focus-visible,select:focus-visible{outline:2px solid var(--madder);outline-offset:2px}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .field{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+  .field label{display:block;font-size:.62rem;font-weight:700;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--dim);margin-bottom:3px}
+  .field .wrap-in{display:flex;align-items:baseline;gap:4px}
+  .field .pre{font-family:var(--mono);font-size:1.05rem;color:var(--faint)}
+  .field input{width:100%;background:transparent;border:none;color:var(--ink);
+    font-family:var(--mono);font-size:1.15rem;font-weight:600;padding:0}
+  .field input:focus{outline:none}
+  .field:focus-within{border-color:var(--madder)}
+  input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  input[type=number]{-moz-appearance:textfield}
+
+  .subhead{font-size:.66rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--faint);margin:14px 0 8px}
+
+  /* cost breakdown */
+  .breakdown{margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)}
+  .brow{display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;
+    font-size:.9rem}
+  .brow .lbl{color:var(--dim)}
+  .brow .val{font-family:var(--mono);font-weight:600}
+  .brow.total{border-top:1px solid var(--line);margin-top:6px;padding-top:9px;font-size:1rem}
+  .brow.total .lbl{color:var(--ink);font-weight:700}
+  .brow.total .val{color:var(--madder);font-size:1.2rem}
+  .brow.price .val{color:var(--leaf);font-size:1.2rem}
+  .brow.profit .val{color:var(--leaf)}
+
+  /* pricing basis toggle */
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{appearance:none;border:none;background:var(--panel2);color:var(--dim);
+    padding:7px 13px;font-size:.8rem;font-weight:700;cursor:pointer}
+  .seg button[aria-pressed="true"]{background:var(--madder);color:#2a1414}
+  .seg button:focus-visible{outline:2px solid var(--madder);outline-offset:-2px}
+
+  /* job total */
+  .jobcard .big{font-family:var(--mono);font-size:1.9rem;font-weight:700;color:var(--leaf)}
+  .jobcard .big small{font-size:.85rem;color:var(--dim);font-weight:600}
+  .jobline{font-size:.85rem;color:var(--dim);margin-top:4px}
+  .jobline b{color:var(--ink)}
+
+  .note{margin-top:8px;font-size:.76rem;color:var(--faint);font-style:italic;font-family:var(--serif)}
+
+  .rowbtns{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+
+  footer{margin-top:28px;border-top:1px solid var(--line);padding-top:12px;
+    font-size:.75rem;color:var(--faint);line-height:1.65}
+  footer code{font-family:var(--mono)}
+
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(8px);
+    background:var(--panel2);border:1px solid var(--madder);color:var(--ink);border-radius:8px;
+    padding:8px 16px;font-size:.85rem;opacity:0;pointer-events:none;
+    transition:opacity .2s,transform .2s;max-width:90vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media (prefers-reduced-motion:reduce){.toast{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Craft <span class="amp">Price</span></h1>
+    <span class="ver">job costing · v1.0.0 · offline</span>
+  </header>
+
+  <section aria-label="Per piece">
+    <h2>Per piece</h2>
+    <p class="sub">What one finished item costs to make, and what to charge for it.</p>
+    <div class="card">
+      <div class="toolrow">
+        <select class="presetsel" id="presetSel" aria-label="Material presets">
+          <option value="">— material presets —</option>
+        </select>
+        <button class="btn" id="presetSave" type="button">Save preset</button>
+        <button class="btn" id="presetDel" type="button">Delete</button>
+      </div>
+
+      <div class="subhead">Materials</div>
+      <div class="grid">
+        <div class="field"><label for="blank">Blank cost</label>
+          <div class="wrap-in"><span class="pre">$</span><input id="blank" type="number" inputmode="decimal" step="0.01" placeholder="3.00"></div></div>
+        <div class="field"><label for="rollCost">Vinyl roll cost</label>
+          <div class="wrap-in"><span class="pre">$</span><input id="rollCost" type="number" inputmode="decimal" step="0.01" placeholder="8.00"></div></div>
+        <div class="field"><label for="rollLen">Vinyl roll length (in)</label>
+          <input id="rollLen" type="number" inputmode="decimal" step="1" placeholder="180"></div>
+        <div class="field"><label for="inchesUsed">Vinyl used per piece (in)</label>
+          <input id="inchesUsed" type="number" inputmode="decimal" step="0.1" placeholder="9"></div>
+        <div class="field"><label for="otherMat">Other materials / piece</label>
+          <div class="wrap-in"><span class="pre">$</span><input id="otherMat" type="number" inputmode="decimal" step="0.01" placeholder="0"></div></div>
+      </div>
+
+      <div class="subhead">Labor &amp; overhead</div>
+      <div class="grid">
+        <div class="field"><label for="minutes">Minutes per piece</label>
+          <input id="minutes" type="number" inputmode="decimal" step="1" placeholder="12"></div>
+        <div class="field"><label for="rate">Your hourly rate</label>
+          <div class="wrap-in"><span class="pre">$</span><input id="rate" type="number" inputmode="decimal" step="1" placeholder="20"></div></div>
+        <div class="field"><label for="overhead">Overhead / piece (wear, etc.)</label>
+          <div class="wrap-in"><span class="pre">$</span><input id="overhead" type="number" inputmode="decimal" step="0.01" placeholder="0.25"></div></div>
+      </div>
+
+      <div class="breakdown" id="breakdown"></div>
+    </div>
+  </section>
+
+  <section aria-label="Pricing">
+    <h2>Pricing</h2>
+    <div class="card">
+      <div class="toolrow">
+        <span class="seg" role="group" aria-label="Pricing basis">
+          <button type="button" data-basis="margin" aria-pressed="true">Margin</button>
+          <button type="button" data-basis="markup" aria-pressed="false">Markup</button>
+        </span>
+        <div class="field" style="flex:0 0 130px;margin:0">
+          <label for="pctIn" id="pctLabel">Target margin %</label>
+          <input id="pctIn" type="number" inputmode="decimal" step="1" placeholder="40">
+        </div>
+      </div>
+      <div class="breakdown" id="priceOut"></div>
+    </div>
+  </section>
+
+  <section aria-label="Whole job">
+    <h2>Whole job</h2>
+    <div class="card jobcard">
+      <div class="field" style="max-width:160px;margin-bottom:12px">
+        <label for="qty">Quantity</label>
+        <input id="qty" type="number" inputmode="numeric" step="1" placeholder="30">
+      </div>
+      <div id="jobOut"></div>
+      <div class="rowbtns">
+        <button class="btn primary" id="copyQuote" type="button">Copy quote</button>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Per-piece cost = blank + (roll cost ÷ roll length × inches used) + other materials +
+    (minutes ÷ 60 × hourly rate) + overhead. <b>Margin</b> is profit as a share of price
+    (<code>price = cost ÷ (1 − margin)</code>) — the convention retail uses.
+    <b>Markup</b> is profit as a share of cost (<code>price = cost × (1 + markup)</code>).
+    The same 40% gives different prices — margin is usually the number you actually want.
+    Presets store material lines (blank, roll, other) not labor, since labor varies by design.
+    Presets persist in this browser only (<code>localStorage</code>).
+  </footer>
+</div>
+
+<div class="toast" id="toast">Saved</div>
+
+<script>
+"use strict";
+const LS_KEY = "craftprice.v1";
+
+let S = load();
+function load(){
+  try{ const raw=localStorage.getItem(LS_KEY); if(raw){ const p=JSON.parse(raw); if(p&&p.presets) return p; } }catch(e){}
+  return { basis:"margin", pct:"40", presets:{}, last:{} };  // presets: name -> {blank,rollCost,rollLen,otherMat}
+}
+function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){} }
+const $   = id => document.getElementById(id);
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const num = v => { const n=parseFloat(v); return Number.isFinite(n)&&n>=0 ? n : null; };
+const money = x => "$"+(Math.round(x*100)/100).toFixed(2);
+const IDS = ["blank","rollCost","rollLen","inchesUsed","otherMat","minutes","rate","overhead"];
+
+/* ================= cost math ================= */
+function perPiece(){
+  const blank=num($("blank").value)||0;
+  const rollCost=num($("rollCost").value), rollLen=num($("rollLen").value);
+  const inches=num($("inchesUsed").value)||0;
+  const vinyl = (rollCost && rollLen) ? (rollCost/rollLen)*inches : 0;
+  const other=num($("otherMat").value)||0;
+  const labor = ((num($("minutes").value)||0)/60)*(num($("rate").value)||0);
+  const overhead=num($("overhead").value)||0;
+  return { blank, vinyl, other, labor, overhead,
+           materials: blank+vinyl+other,
+           total: blank+vinyl+other+labor+overhead,
+           vinylPerIn:(rollCost&&rollLen)?rollCost/rollLen:null };
+}
+function price(cost){
+  const pct=(num($("pctIn").value)||0)/100;
+  if(S.basis==="margin"){
+    const p = pct<1 ? cost/(1-pct) : cost;   // guard against >=100% margin
+    return { price:p, profit:p-cost, valid:pct<1 };
+  }
+  const p=cost*(1+pct);
+  return { price:p, profit:p-cost, valid:true };
+}
+
+/* ================= render ================= */
+function render(){
+  const pp=perPiece();
+  const rows=[
+    ["Blank", pp.blank],
+    ["Vinyl"+(pp.vinylPerIn?" ("+money(pp.vinylPerIn)+"/in)":""), pp.vinyl],
+    ["Other materials", pp.other],
+    ["Labor", pp.labor],
+    ["Overhead", pp.overhead],
+  ].filter(r=>r[1]>0 || r[0]==="Blank");
+  $("breakdown").innerHTML = rows.map(r=>
+    '<div class="brow"><span class="lbl">'+esc(r[0])+'</span><span class="val">'+money(r[1])+'</span></div>').join("")
+    + '<div class="brow total"><span class="lbl">Cost per piece</span><span class="val">'+money(pp.total)+'</span></div>';
+
+  const pr=price(pp.total);
+  let po='';
+  if(!pr.valid){
+    po='<div class="note">Margin must be under 100% — you can\'t price at or above 100% margin.</div>';
+  } else if(pp.total>0){
+    po='<div class="brow"><span class="lbl">Cost per piece</span><span class="val">'+money(pp.total)+'</span></div>'+
+       '<div class="brow profit"><span class="lbl">Profit per piece</span><span class="val">'+money(pr.profit)+'</span></div>'+
+       '<div class="brow price"><span class="lbl">Price per piece</span><span class="val">'+money(pr.price)+'</span></div>';
+  } else po='<div class="note">Enter your costs above to see a price.</div>';
+  $("priceOut").innerHTML=po;
+
+  renderJob(pp.total, pr);
+}
+function renderJob(unitCost, pr){
+  const qty=num($("qty").value);
+  const out=$("jobOut");
+  if(!qty || qty<1 || unitCost<=0 || !pr.valid){
+    out.innerHTML='<div class="note">Enter a quantity to total the job.</div>'; return;
+  }
+  out.innerHTML =
+    '<span class="big">'+money(pr.price*qty)+' <small>for '+qty+' pieces</small></span>'+
+    '<div class="jobline">cost <b>'+money(unitCost*qty)+'</b> · profit <b>'+money(pr.profit*qty)+'</b> · '+money(pr.price)+' each</div>';
+}
+
+/* ================= presets ================= */
+function fillPresets(){
+  const names=Object.keys(S.presets).sort((a,b)=>a.localeCompare(b));
+  $("presetSel").innerHTML='<option value="">— material presets —</option>'+
+    names.map(n=>'<option value="'+esc(n)+'">'+esc(n)+'</option>').join("");
+}
+function toast(m){ const t=$("toast"); t.textContent=m; t.classList.add("show");
+  clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove("show"),1800); }
+
+$("presetSel").addEventListener("change", ()=>{
+  const p=S.presets[$("presetSel").value]; if(!p) return;
+  $("blank").value=p.blank??""; $("rollCost").value=p.rollCost??"";
+  $("rollLen").value=p.rollLen??""; $("otherMat").value=p.otherMat??"";
+  render();
+});
+$("presetSave").addEventListener("click", ()=>{
+  const name=prompt("Save material preset as:");
+  if(!name||!name.trim()) return;
+  S.presets[name.trim()]={ blank:$("blank").value, rollCost:$("rollCost").value,
+    rollLen:$("rollLen").value, otherMat:$("otherMat").value };
+  save(); fillPresets(); $("presetSel").value=name.trim(); toast("Preset saved");
+});
+$("presetDel").addEventListener("click", ()=>{
+  const n=$("presetSel").value;
+  if(!n){ toast("Pick a preset first"); return; }
+  if(!confirm('Delete preset "'+n+'"?')) return;
+  delete S.presets[n]; save(); fillPresets(); toast("Deleted");
+});
+
+/* ================= copy ================= */
+$("copyQuote").addEventListener("click", ()=>{
+  const pp=perPiece(), pr=price(pp.total), qty=num($("qty").value);
+  if(pp.total<=0){ toast("Enter costs first"); return; }
+  const L=["CRAFT QUOTE",
+    "Cost/piece: "+money(pp.total)+"  (materials "+money(pp.materials)+", labor "+money(pp.labor)+
+      (pp.overhead>0?", overhead "+money(pp.overhead):"")+")",
+    "Price/piece: "+money(pr.price)+"  ("+(num($("pctIn").value)||0)+"% "+S.basis+", profit "+money(pr.profit)+")"];
+  if(qty&&qty>=1) L.push("Job of "+qty+": "+money(pr.price*qty)+"  (profit "+money(pr.profit*qty)+")");
+  copyText(L.join("\n"),"Quote copied");
+});
+function copyText(text,ok){
+  const done=s=>toast(s?ok:"Copy failed — long-press to select");
+  if(navigator.clipboard&&navigator.clipboard.writeText)
+    navigator.clipboard.writeText(text).then(()=>done(true)).catch(()=>fb());
+  else fb();
+  function fb(){const ta=document.createElement("textarea");ta.value=text;ta.style.position="fixed";
+    ta.style.opacity="0";document.body.appendChild(ta);ta.select();let o=false;
+    try{o=document.execCommand("copy");}catch(e){}document.body.removeChild(ta);done(o);}
+}
+
+/* ================= events ================= */
+IDS.concat(["pctIn","qty"]).forEach(id=>$(id).addEventListener("input", render));
+document.querySelectorAll("[data-basis]").forEach(b=>b.addEventListener("click", ()=>{
+  S.basis=b.dataset.basis; save();
+  $("pctLabel").textContent="Target "+S.basis+" %";
+  document.querySelectorAll("[data-basis]").forEach(x=>x.setAttribute("aria-pressed", x.dataset.basis===S.basis));
+  render();
+}));
+
+/* ================= init ================= */
+$("pctIn").value=S.pct||"40";
+$("pctLabel").textContent="Target "+S.basis+" %";
+document.querySelectorAll("[data-basis]").forEach(x=>x.setAttribute("aria-pressed", x.dataset.basis===S.basis));
+$("pctIn").addEventListener("input", ()=>{ S.pct=$("pctIn").value; save(); });
+fillPresets(); render();
+</script>
+</body>
+</html>

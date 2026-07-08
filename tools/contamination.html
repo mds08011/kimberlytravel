@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<!--
+  CONTAMINATION RESPONSE — CDC Fecal / Vomit Incident Calculator
+  v1.0.0 · 2026-07-08
+  Aquatics suite, companion to pumproom.html / readingqueue.html /
+  rotation.html / chemstock.html. Single-file, offline, zero dependencies.
+
+  Implements CDC "What to do when there is poop in the pool" response:
+    - Formed stool / vomit  -> FC 2 ppm, pH 7.2-7.5, 25-30 min (CT 45, Giardia)
+    - Diarrheal             -> FC 20 ppm, pH 7.2-7.5, 12.75 h (CT 15,300, Crypto)
+                               CYA must be ~0 or the hold time balloons.
+  Computes the hyperchlorination dose (shares pumproom dosing constants),
+  the required hold time from the CT table, and a reload-surviving countdown
+  to the projected reopen clock time.
+
+  NOT a substitute for the CDC recommendations or your county health code.
+  Verify against your permit. Volumes hardcoded in POOLS (shared w/ pumproom).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#10181d">
+<title>Contamination Response — CDC Incident</title>
+<style>
+  :root{
+    --bg:#10181d; --panel:#17232b; --panel2:#1c2a34; --line:#2a3b46;
+    --ink:#e9f1f4; --dim:#8ba1ac; --faint:#5d7280;
+    --water:#46c8dd; --chlor:#f2c53d; --acid:#e5534b; --ok:#55c98c;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;
+    line-height:1.45;padding:0 14px calc(28px + env(safe-area-inset-bottom))}
+  .wrap{max-width:760px;margin:0 auto}
+
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+    padding:18px 2px 12px;border-bottom:1px solid var(--line)}
+  h1{font-size:1.05rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+  h1 .tick{color:var(--acid)}
+  header .ver{font-family:var(--mono);font-size:.7rem;color:var(--faint)}
+
+  .microlabel{font-size:.66rem;font-weight:700;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--dim)}
+  section{margin-top:18px}
+  .sechead{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .sechead::after{content:"";flex:1;height:1px;background:var(--line)}
+
+  /* incident type */
+  .types{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .type{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink);
+    border-radius:10px;padding:12px;text-align:left;cursor:pointer;min-height:78px}
+  .type .tname{font-weight:700;font-size:.95rem}
+  .type .tdesc{font-size:.76rem;color:var(--dim);margin-top:3px;line-height:1.3}
+  .type[aria-pressed="true"]{border-color:var(--acid);background:var(--panel2);
+    box-shadow:inset 0 0 0 1px var(--acid)}
+  .type[aria-pressed="true"] .tname{color:var(--acid)}
+  .type:focus-visible,.pool:focus-visible,.btn:focus-visible{outline:2px solid var(--water);outline-offset:2px}
+
+  .pools{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+  .pool{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink);
+    border-radius:10px;padding:10px 12px;text-align:left;cursor:pointer}
+  .pool .pname{font-weight:700;font-size:.9rem}
+  .pool .pvol{font-family:var(--mono);font-size:.74rem;color:var(--dim);margin-top:1px}
+  .pool[aria-pressed="true"]{border-color:var(--water);background:var(--panel2);
+    box-shadow:inset 0 0 0 1px var(--water)}
+  .pool[aria-pressed="true"] .pvol{color:var(--water)}
+
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+  .field{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+  .field label{display:block;font-size:.64rem;font-weight:700;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--dim);margin-bottom:3px}
+  .field input,.field select{width:100%;background:transparent;border:none;color:var(--ink);
+    font-family:var(--mono);font-size:1.2rem;font-weight:600;padding:0;color-scheme:dark}
+  .field input:focus,.field select:focus{outline:none}
+  .field:focus-within{border-color:var(--acid)}
+  .field select{appearance:none;font-size:1rem;padding:3px 0}
+  input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  input[type=number]{-moz-appearance:textfield}
+
+  /* protocol steps */
+  .steps{margin-top:14px;counter-reset:step}
+  .step{display:flex;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}
+  .step:last-child{border-bottom:none}
+  .step::before{counter-increment:step;content:counter(step);flex:none;
+    width:26px;height:26px;border-radius:50%;background:var(--panel2);border:1px solid var(--line);
+    color:var(--water);font-family:var(--mono);font-weight:700;font-size:.85rem;
+    display:flex;align-items:center;justify-content:center}
+  .step .body{flex:1;min-width:0}
+  .step .head{font-weight:700;font-size:.92rem}
+  .step .detail{font-size:.84rem;color:var(--dim);margin-top:3px;line-height:1.45}
+  .step .detail b{color:var(--ink)}
+  .step .dose{font-family:var(--mono);font-size:1.05rem;color:var(--chlor);
+    font-weight:700;margin-top:5px}
+  .step .dose .sub{font-size:.8rem;color:var(--dim);font-weight:600}
+  .step.crit .head{color:var(--acid)}
+
+  /* CYA alarm */
+  .cyaAlarm{display:none;margin-top:12px;border:1px solid var(--acid);border-radius:10px;
+    background:var(--panel);overflow:hidden}
+  .cyaAlarm.show{display:block}
+  .cyaAlarm .stripe{height:8px;
+    background:repeating-linear-gradient(-45deg,var(--acid) 0 10px,#0e1418 10px 20px)}
+  .cyaAlarm .msg{padding:11px 13px;font-size:.86rem}
+  .cyaAlarm .msg b{color:var(--acid)}
+  .cyaAlarm .msg .big{font-family:var(--mono);font-size:1.05rem;color:var(--acid);font-weight:700}
+
+  /* hold timer */
+  .timer{margin-top:14px;background:var(--panel);border:1px solid var(--line);
+    border-radius:12px;padding:16px;text-align:center}
+  .timer.running{border-color:var(--chlor)}
+  .timer.done{border-color:var(--ok)}
+  .timer .req{font-size:.78rem;color:var(--dim)}
+  .timer .req b{color:var(--ink);font-family:var(--mono)}
+  .timer .clock{font-family:var(--mono);font-size:2.6rem;font-weight:700;line-height:1.1;
+    margin:6px 0;color:var(--ink)}
+  .timer.running .clock{color:var(--chlor)}
+  .timer.done .clock{color:var(--ok)}
+  .timer .reopen{font-size:.82rem;color:var(--dim)}
+  .timer .reopen b{color:var(--ink)}
+  .timer .bar{height:6px;border-radius:3px;background:var(--panel2);overflow:hidden;margin-top:12px}
+  .timer .bar .fill{height:100%;width:0%;background:var(--chlor);border-radius:3px;transition:width 1s linear}
+  .timer.done .bar .fill{background:var(--ok)}
+  @media (prefers-reduced-motion:reduce){.timer .bar .fill{transition:none}}
+
+  .rowbtns{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .btn{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink);
+    border-radius:8px;padding:11px 15px;font-size:.88rem;font-weight:600;cursor:pointer}
+  .btn:active{background:var(--panel2)}
+  .btn.big{flex:1;min-width:130px;padding:13px;font-size:.98rem}
+  .btn.go{border-color:var(--chlor);color:var(--chlor)}
+  .btn.stop{border-color:var(--acid);color:var(--acid)}
+  .btn.primary{border-color:var(--water);color:var(--water)}
+  .btn[disabled]{opacity:.4;cursor:default}
+
+  footer{margin-top:24px;border-top:1px solid var(--line);padding-top:12px;
+    font-size:.73rem;color:var(--faint);line-height:1.6}
+  footer code{font-family:var(--mono)}
+  footer b{color:var(--dim)}
+
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(8px);
+    background:var(--panel2);border:1px solid var(--water);color:var(--ink);border-radius:8px;
+    padding:8px 16px;font-size:.85rem;opacity:0;pointer-events:none;
+    transition:opacity .2s,transform .2s;max-width:90vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media (prefers-reduced-motion:reduce){.toast{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1><span class="tick">▮</span> Contamination Response</h1>
+    <span class="ver">CDC incident · v1.0.0 · offline</span>
+  </header>
+
+  <section aria-label="Incident type">
+    <div class="sechead"><span class="microlabel">Incident Type</span></div>
+    <div class="types" id="types"></div>
+    <div class="pools" id="pools"></div>
+    <div class="grid" id="readings"></div>
+    <div class="cyaAlarm" id="cyaAlarm" role="alert">
+      <div class="stripe"></div><div class="msg" id="cyaMsg"></div>
+    </div>
+  </section>
+
+  <section aria-label="Protocol">
+    <div class="sechead"><span class="microlabel" id="protoLabel">Protocol</span></div>
+    <div class="steps" id="steps"></div>
+  </section>
+
+  <section aria-label="Hold timer">
+    <div class="sechead"><span class="microlabel">Disinfection Hold</span></div>
+    <div class="timer" id="timer">
+      <div class="req" id="timerReq"></div>
+      <div class="clock" id="clock">--:--:--</div>
+      <div class="reopen" id="reopen"></div>
+      <div class="bar"><div class="fill" id="bar"></div></div>
+    </div>
+    <div class="rowbtns">
+      <button class="btn go big" id="startBtn" type="button">Start hold — FC verified at target</button>
+      <button class="btn stop" id="resetBtn" type="button" disabled>Reset</button>
+    </div>
+    <div class="rowbtns">
+      <button class="btn primary" id="copyLog" type="button">Copy incident log</button>
+    </div>
+  </section>
+
+  <footer>
+    Implements CDC <b>Fecal Incident Response Recommendations</b> [1][2]: formed stool / vomit
+    to <b>2 ppm FC · 25–30 min</b> (CT 45, Giardia); diarrhea to <b>20 ppm FC · 12.75 h</b>
+    (CT 15,300, Crypto), pH 7.2–7.5, temp ≥ 77 °F, <b>unstabilized</b> chlorine.
+    Cyanuric acid slows Crypto kill 3–5× — the diarrheal timetable assumes CYA ≈ 0;
+    with CYA present, drain/dilute first or hold far longer per CDC's stabilized-pool table.
+    The hold clock starts only once FC is <b>verified at target</b>, survives a reload
+    (<code>localStorage</code>), and shared-filtration pools all close together. This tool does
+    not replace the CDC recommendations or your county health code — verify against your permit.
+  </footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ============ CONFIG (shares volumes with pumproom.html) ============ */
+const POOLS = [
+  { id:"comp",   name:"Competition Pool",   gal:315643 },
+  { id:"inst",   name:"Instructional Pool", gal:84200  },
+  { id:"splash", name:"Splash Pad",         gal:4100   },
+  { id:"spa",    name:"Spa",                gal:2000   },
+];
+/* CDC incident definitions */
+const INCIDENTS = {
+  formed: {
+    name:"Formed stool / Vomit",
+    desc:"Solid stool, vomit, or blood. Lower risk (Giardia).",
+    targetFC:2, ct:45, minHold:30,   // CDC field guidance floor: 30 min at 2 ppm
+    pathogen:"Giardia", ctLabel:"CT 45",
+  },
+  diarrheal: {
+    name:"Diarrheal",
+    desc:"Loose/liquid stool. Higher risk (Cryptosporidium).",
+    targetFC:20, ct:15300, minHold:765, // 15300/20 = 765 min = 12.75 h
+    pathogen:"Cryptosporidium", ctLabel:"CT 15,300",
+  },
+};
+/* chlorine products — per 1 ppm FC per 10,000 gal (unstabilized only) */
+const CHLOR = [
+  { id:"lq125", name:"Liquid chlorine 12.5%", type:"liq", per:10.7 },
+  { id:"ch65",  name:"Cal-hypo 65%",          type:"dry", per:2.05 },
+  { id:"ch73",  name:"Cal-hypo 73%",          type:"dry", per:1.83 },
+];
+const LS_KEY = "contamination.v1";
+
+/* ================= state ================= */
+let S = load();
+function load(){
+  try{
+    const raw=localStorage.getItem(LS_KEY);
+    if(raw){ const p=JSON.parse(raw); if(p && p.r) return p; }
+  }catch(e){}
+  return { type:"formed", pool:"comp", chlor:"lq125",
+           r:{fc:"", ph:"", cya:"", temp:""}, hold:null }; // hold:{startMs, reqMin, type, pool}
+}
+function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){} }
+const $   = id => document.getElementById(id);
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const num = v => { const n=parseFloat(v); return Number.isFinite(n) ? n : null; };
+const r1  = x => Math.round(x*10)/10;
+const pool= () => POOLS.find(p=>p.id===S.pool);
+const inc = () => INCIDENTS[S.type];
+
+/* ================= dosing ================= */
+function fmtDry(oz){
+  if(oz>=16){ const lb=oz/16; return {main:(lb>=100?Math.round(lb):r1(lb))+" lb", sub:""}; }
+  return {main:r1(oz)+" oz", sub:""};
+}
+function fmtLiq(floz){
+  if(floz>=128) return {main:r1(floz/128)+" gal", sub:Math.round(floz)+" fl oz"};
+  if(floz>=32)  return {main:Math.round(floz)+" fl oz", sub:r1(floz/32)+" qt"};
+  return {main:r1(floz)+" fl oz", sub:""};
+}
+function chlorineDose(){
+  const p=pool(), curFC=num(S.r.fc)||0, tgt=inc().targetFC;
+  const delta=Math.max(0, tgt-curFC);
+  const chem=CHLOR.find(c=>c.id===S.chlor)||CHLOR[0];
+  const vol=p.gal/10000, amt=chem.per*delta*vol;
+  const f = chem.type==="liq" ? fmtLiq(amt) : fmtDry(amt);
+  return { delta, chem, f, tgt, curFC };
+}
+
+/* ================= hold-time math ================= */
+function requiredHoldMin(){
+  const i=inc(), tgt=i.targetFC;
+  const ctMin = i.ct/tgt;             // CT / concentration
+  return Math.max(i.minHold||0, Math.round(ctMin));
+}
+function fmtDur(min){
+  min=Math.max(0,Math.round(min));
+  const h=Math.floor(min/60), m=min%60;
+  if(h>=1) return h+" h"+(m?" "+m+" min":"");
+  return m+" min";
+}
+function fmtClock(ms){
+  ms=Math.max(0,ms);
+  const s=Math.floor(ms/1000), hh=Math.floor(s/3600),
+        mm=Math.floor((s%3600)/60), ss=s%60;
+  const p=n=>String(n).padStart(2,"0");
+  return p(hh)+":"+p(mm)+":"+p(ss);
+}
+
+/* ================= CYA constraint ================= */
+function cyaProblem(){
+  if(S.type!=="diarrheal") return null;
+  const cya=num(S.r.cya);
+  if(cya==null) return {level:"unknown"};
+  if(cya>=1) return {level:"high", cya};
+  return null;
+}
+
+/* ================= render ================= */
+function renderTypes(){
+  $("types").innerHTML = Object.entries(INCIDENTS).map(([k,v])=>
+    '<button class="type" type="button" data-type="'+k+'" aria-pressed="'+(k===S.type)+'">'+
+    '<span class="tname">'+esc(v.name)+'</span>'+
+    '<span class="tdesc">'+esc(v.desc)+'</span></button>').join("");
+}
+function renderPools(){
+  $("pools").innerHTML = POOLS.map(p=>
+    '<button class="pool" type="button" data-id="'+p.id+'" aria-pressed="'+(p.id===S.pool)+'">'+
+    '<span class="pname">'+esc(p.name)+'</span>'+
+    '<span class="pvol">'+p.gal.toLocaleString()+' gal</span></button>').join("");
+}
+function renderReadings(){
+  const fields=[
+    {k:"fc",  label:"Current FC (ppm)", ph:"3"},
+    {k:"ph",  label:"pH",               ph:"7.5"},
+    {k:"cya", label:"CYA (ppm)",        ph:"0"},
+  ];
+  $("readings").innerHTML = fields.map(f=>
+    '<div class="field"><label for="in-'+f.k+'">'+f.label+'</label>'+
+    '<input id="in-'+f.k+'" data-key="'+f.k+'" type="number" inputmode="decimal" step="0.1" '+
+    'placeholder="'+f.ph+'" value="'+esc(S.r[f.k]??"")+'"></div>').join("")
+    + '<div class="field" style="grid-column:span 3">'+
+      '<label for="chlorSel">Chlorine on hand (unstabilized)</label>'+
+      '<select id="chlorSel">'+CHLOR.map(c=>
+        '<option value="'+c.id+'"'+(c.id===S.chlor?" selected":"")+'>'+esc(c.name)+'</option>').join("")+
+      '</select></div>';
+}
+function renderCya(){
+  const prob=cyaProblem(), el=$("cyaAlarm");
+  if(!prob){ el.classList.remove("show"); return; }
+  el.classList.add("show");
+  if(prob.level==="unknown"){
+    $("cyaMsg").innerHTML='<b>Enter CYA before starting a diarrheal hold.</b> '+
+      'Stabilizer slows Crypto inactivation 3–5×. The 12.75 h timetable is only valid at CYA ≈ 0.';
+  } else {
+    $("cyaMsg").innerHTML='<span class="big">CYA '+prob.cya+' ppm — the 12.75 h hold is INVALID.</span><br>'+
+      'Cyanuric acid protects Crypto from chlorine. Per CDC you must lower CYA (partial drain / dilution) '+
+      'before hyperchlorinating, or follow the far longer stabilized-pool hold table. Do not reopen on the '+
+      'standard timetable with CYA present.';
+  }
+}
+function renderSteps(){
+  const i=inc(), p=pool(), d=chlorineDose();
+  const isDia=S.type==="diarrheal";
+  const steps=[];
+  steps.push({head:"Clear the water — close all shared-filtration pools",
+    detail:"Everyone out of <b>"+esc(p.name)+"</b> and any pool on the same filter. Post closure signage."});
+  steps.push({head:isDia?"Remove visible stool — do NOT vacuum":"Remove the material with a net or bucket",
+    detail:isDia
+      ?"Net out what you can. <b>Vacuuming spreads Crypto through the hoses.</b> Disinfect the net after."
+      :"Scoop with a net/bucket, dispose sanitarily, then disinfect the tool."});
+  steps.push({head:"Raise Free Chlorine to "+i.targetFC+" ppm ("+i.ctLabel+", "+i.pathogen+")",
+    crit:true,
+    detail:"From current FC <b>"+(d.curFC||0)+"</b> to <b>"+i.targetFC+" ppm</b> in "+
+      p.gal.toLocaleString()+" gal, using <b>unstabilized</b> chlorine only:",
+    dose: d.delta>0
+      ? "Add "+d.f.main+(d.f.sub?' <span class="sub">('+d.f.sub+")</span>":"")+" — "+esc(d.chem.name)
+      : "Already at or above "+i.targetFC+" ppm — verify and hold."});
+  steps.push({head:"Balance pH to 7.2–7.5, confirm temp ≥ 77 °F",
+    detail:"High-pH chlorine will push pH up — bring it back into range or the CT clock is invalid. "+
+      "Below 77 °F the kill slows and the hold extends."});
+  steps.push({head:"Hold "+fmtDur(requiredHoldMin())+" at target, then verify",
+    crit:isDia,
+    detail:"Keep FC at <b>"+i.targetFC+" ppm</b> and pH in range for the full hold (start the timer below "+
+      "once FC is verified). "+(isDia
+      ?"Backwash to waste afterward — do not return through the filter."
+      :"Confirm FC held before reopening.")});
+  $("steps").innerHTML = steps.map(s=>
+    '<div class="step'+(s.crit?" crit":"")+'"><div class="body">'+
+    '<div class="head">'+s.head+'</div>'+
+    '<div class="detail">'+s.detail+'</div>'+
+    (s.dose?'<div class="dose">'+s.dose+'</div>':'')+
+    '</div></div>').join("");
+  $("protoLabel").textContent = i.name+" — Protocol";
+}
+
+/* ---- timer ---- */
+let tick=null;
+function renderTimer(){
+  const req=requiredHoldMin(), t=$("timer");
+  $("timerReq").innerHTML="required hold <b>"+fmtDur(req)+"</b> · FC target <b>"+inc().targetFC+" ppm</b>";
+  const h=S.hold;
+  if(!h){
+    t.className="timer"; $("clock").textContent=fmtClock(req*60000);
+    $("reopen").textContent="clock starts when FC is verified at target";
+    $("bar").style.width="0%";
+    $("startBtn").disabled=false; $("resetBtn").disabled=true;
+    $("startBtn").textContent="Start hold — FC verified at target";
+    return;
+  }
+  const total=h.reqMin*60000, elapsed=Date.now()-h.startMs, left=total-elapsed;
+  $("startBtn").disabled=true; $("resetBtn").disabled=false;
+  const reopenAt=new Date(h.startMs+total);
+  if(left<=0){
+    t.className="timer done";
+    $("clock").textContent="00:00:00";
+    $("reopen").innerHTML="✦ hold complete — verify FC/pH, backwash if diarrheal, then reopen "+
+      "<b>"+esc(POOLS.find(p=>p.id===h.pool)?.name||"")+"</b>";
+    $("bar").style.width="100%";
+  } else {
+    t.className="timer running";
+    $("clock").textContent=fmtClock(left);
+    $("reopen").innerHTML="reopen at <b>"+reopenAt.toLocaleString([],
+      {weekday:"short",hour:"numeric",minute:"2-digit"})+"</b>";
+    $("bar").style.width=Math.min(100,elapsed/total*100)+"%";
+  }
+}
+function startTimer(){
+  if(cyaProblem()){ toast("Resolve the CYA warning first"); return; }
+  S.hold={ startMs:Date.now(), reqMin:requiredHoldMin(), type:S.type, pool:S.pool };
+  save(); renderTimer(); runTick();
+  toast("Hold started — "+fmtDur(S.hold.reqMin));
+}
+function runTick(){
+  clearInterval(tick);
+  if(S.hold){ tick=setInterval(renderTimer,1000); }
+}
+
+/* ================= copy ================= */
+function toast(msg){
+  const t=$("toast"); t.textContent=msg;
+  t.classList.add("show"); clearTimeout(toast._t);
+  toast._t=setTimeout(()=>t.classList.remove("show"),2000);
+}
+function copyText(text,okMsg){
+  const done=ok=>toast(ok?okMsg:"Copy failed — long-press to select");
+  if(navigator.clipboard&&navigator.clipboard.writeText)
+    navigator.clipboard.writeText(text).then(()=>done(true)).catch(()=>fallbackCopy(text,done));
+  else fallbackCopy(text,done);
+}
+function fallbackCopy(text,done){
+  const ta=document.createElement("textarea");
+  ta.value=text; ta.style.position="fixed"; ta.style.opacity="0";
+  document.body.appendChild(ta); ta.select();
+  let ok=false; try{ok=document.execCommand("copy");}catch(e){}
+  document.body.removeChild(ta); done(ok);
+}
+$("copyLog").addEventListener("click", ()=>{
+  const i=inc(), p=pool(), d=chlorineDose(), now=new Date();
+  const L=[
+    "CONTAMINATION INCIDENT LOG",
+    "Pool: "+p.name+" ("+p.gal.toLocaleString()+" gal)",
+    "Type: "+i.name+" ("+i.ctLabel+", "+i.pathogen+")",
+    "Observed: "+now.toLocaleString([],{month:"2-digit",day:"2-digit",hour:"numeric",minute:"2-digit"}),
+    "At observation — FC "+(S.r.fc||"?")+" ppm, pH "+(S.r.ph||"?")+", CYA "+(S.r.cya||"?")+" ppm",
+    "Action: raise FC to "+i.targetFC+" ppm ("+(d.delta>0?"add "+d.f.main+" "+d.chem.name:"already at target")+")",
+    "Required hold: "+fmtDur(requiredHoldMin())+" at "+i.targetFC+" ppm, pH 7.2–7.5, ≥77°F",
+  ];
+  if(S.hold){
+    L.push("Hold started: "+new Date(S.hold.startMs).toLocaleString([],{month:"2-digit",day:"2-digit",hour:"numeric",minute:"2-digit"}));
+    L.push("Reopen after: "+new Date(S.hold.startMs+S.hold.reqMin*60000).toLocaleString([],{month:"2-digit",day:"2-digit",hour:"numeric",minute:"2-digit"}));
+  }
+  if(S.type==="diarrheal") L.push("Note: verify CYA ≈ 0; backwash to waste after hold.");
+  copyText(L.join("\n"), "Incident log copied — paste into DigiQuatics");
+});
+
+/* ================= events ================= */
+$("types").addEventListener("click", e=>{
+  const b=e.target.closest(".type"); if(!b) return;
+  if(S.hold && !confirm("Changing incident type will clear the running hold. Continue?")) return;
+  S.type=b.dataset.type;
+  if(S.hold){ S.hold=null; clearInterval(tick); }
+  save(); renderAll();
+});
+$("pools").addEventListener("click", e=>{
+  const b=e.target.closest(".pool"); if(!b) return;
+  if(S.hold && !confirm("Changing pool will clear the running hold. Continue?")) return;
+  S.pool=b.dataset.id;
+  if(S.hold){ S.hold=null; clearInterval(tick); }
+  save(); renderAll();
+});
+$("readings").addEventListener("input", e=>{
+  if(e.target.dataset.key){ S.r[e.target.dataset.key]=e.target.value; save(); renderDynamic(); }
+});
+$("readings").addEventListener("change", e=>{
+  if(e.target.id==="chlorSel"){ S.chlor=e.target.value; save(); renderSteps(); }
+});
+$("startBtn").addEventListener("click", startTimer);
+$("resetBtn").addEventListener("click", ()=>{
+  if(!confirm("Reset the disinfection hold clock?")) return;
+  S.hold=null; clearInterval(tick); save(); renderTimer();
+});
+
+/* ================= init ================= */
+function renderDynamic(){ renderCya(); renderSteps(); renderTimer(); }
+function renderAll(){ renderTypes(); renderPools(); renderReadings(); renderDynamic(); runTick(); }
+renderAll();
+</script>
+</body>
+</html>
