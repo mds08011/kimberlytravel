@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<!--
+  READING QUEUE — Offline Chemical Log Capture
+  v1.0.0 · 2026-07-07
+  Companion to pumproom.html. Single-file, offline, zero dependencies.
+  Capture readings in the pump room (no signal), then batch copy/paste or
+  export CSV once back in WiFi range for entry into DigiQuatics.
+  Bodies of water are hardcoded in POOLS below.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#10181d">
+<title>Reading Queue — Chemical Log Capture</title>
+<style>
+  :root{
+    --bg:#10181d; --panel:#17232b; --panel2:#1c2a34; --line:#2a3b46;
+    --ink:#e9f1f4; --dim:#8ba1ac; --faint:#5d7280;
+    --water:#46c8dd; --chlor:#f2c53d; --acid:#e5534b; --ok:#55c98c;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;
+    line-height:1.45;padding:0 14px calc(28px + env(safe-area-inset-bottom))}
+  .wrap{max-width:760px;margin:0 auto}
+
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+    padding:18px 2px 12px;border-bottom:1px solid var(--line)}
+  h1{font-size:1.05rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+  h1 .tick{color:var(--water)}
+  header .ver{font-family:var(--mono);font-size:.7rem;color:var(--faint)}
+
+  .microlabel{font-size:.66rem;font-weight:700;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--dim)}
+  section{margin-top:20px}
+  .sechead{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .sechead::after{content:"";flex:1;height:1px;background:var(--line)}
+  .sechead .count{font-family:var(--mono);font-size:.72rem;color:var(--faint)}
+
+  /* pool selector */
+  .pools{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .pool{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink);
+    border-radius:10px;padding:10px 12px 9px;text-align:left;cursor:pointer;min-height:56px}
+  .pool .pname{font-weight:700;font-size:.92rem}
+  .pool .pvol{font-family:var(--mono);font-size:.74rem;color:var(--dim);margin-top:1px}
+  .pool[aria-pressed="true"]{border-color:var(--water);background:var(--panel2);
+    box-shadow:inset 0 0 0 1px var(--water)}
+  .pool[aria-pressed="true"] .pvol{color:var(--water)}
+  .pool:focus-visible,.btn:focus-visible,.rowbtn:focus-visible{outline:2px solid var(--water);outline-offset:2px}
+
+  /* capture form */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  @media(max-width:430px){.grid{grid-template-columns:repeat(2,1fr)}}
+  .field{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+  .field label{display:block;font-size:.64rem;font-weight:700;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--dim);margin-bottom:3px}
+  .field input{width:100%;background:transparent;border:none;color:var(--ink);
+    font-family:var(--mono);font-size:1.25rem;font-weight:600;padding:0}
+  .field input:focus{outline:none}
+  .field:focus-within{border-color:var(--water)}
+  .field.bad{border-color:var(--acid)}
+  .field.bad label{color:var(--acid)}
+  input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  input[type=number]{-moz-appearance:textfield}
+  input[type=time]{color-scheme:dark}
+
+  .rowbtns{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center}
+  .btn{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink);
+    border-radius:8px;padding:10px 14px;font-size:.86rem;font-weight:600;cursor:pointer}
+  .btn:active{background:var(--panel2)}
+  .btn.primary{border-color:var(--water);color:var(--water)}
+  .btn.big{flex:1;padding:13px 14px;font-size:.95rem}
+  .btn.danger{border-color:var(--acid);color:var(--acid)}
+  .btn[disabled]{opacity:.4;cursor:default}
+  .capnote{font-size:.76rem;color:var(--chlor);margin-top:8px;display:none}
+  .capnote.show{display:block}
+
+  /* queue ledger */
+  .queue{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .qrow{display:flex;gap:10px;align-items:center;padding:10px 12px;
+    background:var(--panel);border-bottom:1px solid var(--line)}
+  .qrow:last-child{border-bottom:none}
+  .qrow.entered{opacity:.45}
+  .qrow .dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--ok)}
+  .qrow.viol .dot{background:var(--acid)}
+  .qrow.entered .dot{background:var(--faint)}
+  .qmain{flex:1;min-width:0}
+  .qline1{font-family:var(--mono);font-size:.8rem;color:var(--dim)}
+  .qline1 b{color:var(--ink);font-weight:600}
+  .qline2{font-family:var(--mono);font-size:.88rem;margin-top:1px;
+    white-space:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .qline2::-webkit-scrollbar{display:none}
+  .qflag{font-size:.6rem;font-weight:800;letter-spacing:.12em;color:var(--acid);
+    text-transform:uppercase;margin-left:6px}
+  .qbtns{display:flex;gap:6px;flex:none}
+  .rowbtn{appearance:none;border:1px solid var(--line);background:var(--panel2);color:var(--dim);
+    border-radius:7px;width:38px;height:38px;font-size:1rem;cursor:pointer;line-height:1}
+  .rowbtn:active{color:var(--ink)}
+  .empty{padding:22px 14px;text-align:center;color:var(--faint);font-size:.85rem;
+    background:var(--panel)}
+
+  footer{margin-top:26px;border-top:1px solid var(--line);padding-top:12px;
+    font-size:.74rem;color:var(--faint);line-height:1.6}
+  footer code{font-family:var(--mono)}
+
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(8px);
+    background:var(--panel2);border:1px solid var(--water);color:var(--ink);border-radius:8px;
+    padding:8px 16px;font-size:.85rem;opacity:0;pointer-events:none;
+    transition:opacity .2s,transform .2s;max-width:90vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media (prefers-reduced-motion:reduce){.toast{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1><span class="tick">▮</span> Reading Queue</h1>
+    <span class="ver">chem log capture · v1.0.0 · offline</span>
+  </header>
+
+  <section aria-label="Body of water">
+    <div class="sechead"><span class="microlabel">Body of Water</span></div>
+    <div class="pools" id="pools"></div>
+  </section>
+
+  <section aria-label="New reading">
+    <div class="sechead"><span class="microlabel">New Reading</span></div>
+    <div class="grid" id="capture"></div>
+    <div class="capnote" id="capnote"></div>
+    <div class="rowbtns">
+      <button class="btn primary big" id="addBtn" type="button">＋ Add to queue</button>
+    </div>
+  </section>
+
+  <section aria-label="Queued readings">
+    <div class="sechead">
+      <span class="microlabel">Queue</span>
+      <span class="count" id="qcount"></span>
+    </div>
+    <div class="queue" id="queue"></div>
+    <div class="rowbtns">
+      <button class="btn primary" id="copyAll" type="button">Copy all pending</button>
+      <button class="btn" id="csvBtn" type="button">Export CSV</button>
+      <button class="btn" id="clearEntered" type="button">Clear entered</button>
+      <button class="btn danger" id="clearAll" type="button">Clear all</button>
+    </div>
+  </section>
+
+  <footer>
+    Capture readings offline; back in WiFi range, tap <b>⧉</b> on a row to copy one reading,
+    or <b>Copy all pending</b> for the whole block — then paste into DigiQuatics.
+    Tap <b>✓</b> to mark a row entered (it dims but stays until cleared).
+    Red-flagged rows breach FC/pH code limits — act on those first, don't just log them.
+    Data lives in this browser only (<code>localStorage</code>); the CSV export is your backup.
+  </footer>
+</div>
+
+<div class="toast" id="toast">Copied</div>
+
+<script>
+"use strict";
+/* ================= CONFIG — edit pools & limits here ================= */
+const POOLS = [
+  { id:"comp",   name:"Competition Pool",   gal:315643, minFC:2.0 },
+  { id:"inst",   name:"Instructional Pool", gal:84200,  minFC:2.0 },
+  { id:"splash", name:"Splash Pad",         gal:4100,   minFC:3.0 },
+  { id:"spa",    name:"Spa",                gal:2000,   minFC:3.0 },
+];
+const MAX_FC = 10, PH_LO = 7.2, PH_HI = 8.0;
+
+const FIELDS = [
+  { key:"time", label:"Time",          type:"time" },
+  { key:"fc",   label:"Free Cl (ppm)", type:"number", step:"0.1", ph:"2.4" },
+  { key:"ph",   label:"pH",            type:"number", step:"0.1", ph:"7.6" },
+  { key:"temp", label:"Temp (°F)",     type:"number", step:"1",   ph:"80"  },
+  { key:"flow", label:"Flow (GPM)",    type:"number", step:"1",   ph:"—"   },
+  { key:"init", label:"Initials",      type:"text",   ph:"MK"    },
+];
+const LS_KEY = "readingqueue.v1";
+
+/* ================= state ================= */
+let S = load();
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw){ const p = JSON.parse(raw); if(p && Array.isArray(p.q)) return p; }
+  }catch(e){}
+  return { active:"comp", init:"", q:[] };   // q: [{id, poolId, iso, time, fc, ph, temp, flow, init, entered}]
+}
+function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){} }
+const pool = id => POOLS.find(p=>p.id===id);
+const num  = v => { const n=parseFloat(v); return Number.isFinite(n)?n:null; };
+const esc  = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+
+/* ================= violation check ================= */
+function violations(r){
+  const p = pool(r.poolId), v = [];
+  if(r.fc!=null && r.fc < p.minFC) v.push(`FC below ${p.minFC} ppm min`);
+  if(r.fc!=null && r.fc > MAX_FC)  v.push(`FC over ${MAX_FC} ppm max`);
+  if(r.ph!=null && (r.ph < PH_LO || r.ph > PH_HI)) v.push(`pH outside ${PH_LO}–${PH_HI}`);
+  return v;
+}
+
+/* ================= formatting ================= */
+function fmtDate(iso){
+  const d = new Date(iso);
+  return d.toLocaleDateString([], {month:"2-digit", day:"2-digit"});
+}
+function time12(hhmm){
+  const [h,m] = hhmm.split(":").map(Number);
+  const ap = h>=12 ? "PM" : "AM";
+  return `${((h+11)%12)+1}:${String(m).padStart(2,"0")} ${ap}`;
+}
+function lineFor(r){
+  const seg = [];
+  if(r.fc!=null)   seg.push("FC "+r.fc);
+  if(r.ph!=null)   seg.push("pH "+r.ph);
+  if(r.temp!=null) seg.push(r.temp+"°F");
+  if(r.flow!=null) seg.push(r.flow+" GPM");
+  if(r.init)       seg.push(r.init);
+  const v = violations(r);
+  return `${pool(r.poolId).name} — ${fmtDate(r.iso)} ${time12(r.time)} — `
+       + (seg.join(" / ")||"no values")
+       + (v.length ? "  ⚠ "+v.join("; ") : "");
+}
+function csvFor(rows){
+  const head = "date,time,pool,free_cl_ppm,ph,temp_f,flow_gpm,initials,violation,entered";
+  const q = s => { s = s==null ? "" : String(s); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; };
+  const body = rows.map(r => [
+    fmtDate(r.iso), r.time, pool(r.poolId).name,
+    r.fc??"", r.ph??"", r.temp??"", r.flow??"", r.init??"",
+    violations(r).join("; "), r.entered ? "yes" : "no"
+  ].map(q).join(","));
+  return [head, ...body].join("\r\n");
+}
+
+/* ================= render ================= */
+const $ = id => document.getElementById(id);
+
+function renderPools(){
+  $("pools").innerHTML = POOLS.map(p=>`
+    <button class="pool" type="button" data-id="${p.id}" aria-pressed="${p.id===S.active}">
+      <span class="pname">${p.name}</span>
+      <span class="pvol">${p.gal.toLocaleString()} gal</span>
+    </button>`).join("");
+}
+
+function nowHHMM(){
+  const d = new Date();
+  return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
+}
+
+function renderCapture(){
+  $("capture").innerHTML = FIELDS.map(f=>{
+    const val = f.key==="time" ? nowHHMM() : (f.key==="init" ? esc(S.init) : "");
+    return `<div class="field" id="fw-${f.key}">
+      <label for="in-${f.key}">${f.label}</label>
+      <input id="in-${f.key}" data-key="${f.key}" type="${f.type}"
+        ${f.type==="number" ? `inputmode="decimal" step="${f.step}"` : ""}
+        ${f.key==="init" ? `autocapitalize="characters" maxlength="4"` : ""}
+        placeholder="${f.ph||""}" value="${val}">
+    </div>`;
+  }).join("");
+}
+
+function captureValues(){
+  return {
+    poolId: S.active,
+    iso: new Date().toISOString(),
+    time: $("in-time").value || nowHHMM(),
+    fc:   num($("in-fc").value),
+    ph:   num($("in-ph").value),
+    temp: num($("in-temp").value),
+    flow: num($("in-flow").value),
+    init: $("in-init").value.trim().toUpperCase(),
+  };
+}
+
+function liveFlag(){
+  const r = captureValues();
+  const p = pool(r.poolId);
+  $("fw-fc").classList.toggle("bad", r.fc!=null && (r.fc < p.minFC || r.fc > MAX_FC));
+  $("fw-ph").classList.toggle("bad", r.ph!=null && (r.ph < PH_LO || r.ph > PH_HI));
+  const v = violations(r);
+  const note = $("capnote");
+  note.classList.toggle("show", v.length>0);
+  note.textContent = v.length ? "⚠ "+v.join(" · ")+" — correct the water, log it anyway." : "";
+}
+
+function renderQueue(){
+  const q = S.q;
+  const pend = q.filter(r=>!r.entered).length;
+  $("qcount").textContent = q.length ? `${pend} pending · ${q.length-pend} entered` : "";
+  ["copyAll","csvBtn","clearEntered","clearAll"].forEach(id=>{
+    $(id).disabled = q.length===0;
+  });
+  $("copyAll").disabled = pend===0;
+  $("clearEntered").disabled = (q.length-pend)===0;
+
+  if(!q.length){
+    $("queue").innerHTML = `<div class="empty">No readings queued.<br>Take a reading, add it, repeat — copy everything out later.</div>`;
+    return;
+  }
+  $("queue").innerHTML = q.map(r=>{
+    const v = violations(r);
+    const seg = [];
+    if(r.fc!=null)   seg.push("FC <b>"+r.fc+"</b>");
+    if(r.ph!=null)   seg.push("pH <b>"+r.ph+"</b>");
+    if(r.temp!=null) seg.push("<b>"+r.temp+"</b>°F");
+    if(r.flow!=null) seg.push("<b>"+r.flow+"</b> GPM");
+    return `<div class="qrow ${r.entered?"entered":""} ${v.length?"viol":""}" data-id="${r.id}">
+      <span class="dot" aria-hidden="true"></span>
+      <div class="qmain">
+        <div class="qline1"><b>${pool(r.poolId).name}</b> · ${fmtDate(r.iso)} ${time12(r.time)}${r.init?" · "+esc(r.init):""}${v.length?`<span class="qflag">violation</span>`:""}</div>
+        <div class="qline2">${seg.join(" &nbsp;/&nbsp; ")||"<span style='color:var(--faint)'>no values</span>"}</div>
+      </div>
+      <div class="qbtns">
+        <button class="rowbtn" data-act="copy"  title="Copy this reading" aria-label="Copy">⧉</button>
+        <button class="rowbtn" data-act="enter" title="Mark entered" aria-label="Mark entered">${r.entered?"↺":"✓"}</button>
+        <button class="rowbtn" data-act="del"   title="Delete" aria-label="Delete">✕</button>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+/* ================= clipboard / download ================= */
+function toast(msg){
+  const t=$("toast"); t.textContent=msg;
+  t.classList.add("show"); clearTimeout(toast._t);
+  toast._t=setTimeout(()=>t.classList.remove("show"),1900);
+}
+function copyText(text, okMsg){
+  const done = ok => toast(ok ? okMsg : "Copy failed — long-press to select");
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(()=>done(true)).catch(()=>fallbackCopy(text,done));
+  } else fallbackCopy(text,done);
+}
+function fallbackCopy(text,done){
+  const ta=document.createElement("textarea");
+  ta.value=text; ta.style.position="fixed"; ta.style.opacity="0";
+  document.body.appendChild(ta); ta.select();
+  let ok=false; try{ ok=document.execCommand("copy"); }catch(e){}
+  document.body.removeChild(ta); done(ok);
+}
+function downloadCSV(){
+  const csv = csvFor(S.q);
+  const blob = new Blob(["\uFEFF"+csv], {type:"text/csv;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const d = new Date();
+  a.href = url;
+  a.download = `chem-readings-${d.toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 4000);
+  toast("CSV exported");
+}
+
+/* ================= events ================= */
+$("pools").addEventListener("click", e=>{
+  const b = e.target.closest(".pool"); if(!b) return;
+  S.active = b.dataset.id; save(); renderPools(); liveFlag();
+});
+
+$("capture").addEventListener("input", e=>{
+  if(e.target.dataset.key==="init"){ S.init = e.target.value.trim().toUpperCase(); save(); }
+  liveFlag();
+});
+
+$("addBtn").addEventListener("click", ()=>{
+  const r = captureValues();
+  if(r.fc==null && r.ph==null && r.temp==null && r.flow==null){
+    toast("Nothing to add — enter at least one value"); return;
+  }
+  r.id = Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+  r.entered = false;
+  S.q.push(r);
+  save();
+  ["fc","ph","temp","flow"].forEach(k=>{ $("in-"+k).value=""; });
+  $("in-time").value = nowHHMM();
+  liveFlag(); renderQueue();
+  toast(`Queued — ${pool(r.poolId).name} ${time12(r.time)}`);
+});
+
+$("queue").addEventListener("click", e=>{
+  const btn = e.target.closest(".rowbtn"); if(!btn) return;
+  const row = e.target.closest(".qrow");
+  const r = S.q.find(x=>x.id===row.dataset.id); if(!r) return;
+  const act = btn.dataset.act;
+  if(act==="copy"){ copyText(lineFor(r), "Copied — paste into DigiQuatics"); return; }
+  if(act==="enter"){ r.entered = !r.entered; save(); renderQueue(); return; }
+  if(act==="del"){
+    S.q = S.q.filter(x=>x.id!==r.id); save(); renderQueue();
+    toast("Deleted"); return;
+  }
+});
+
+$("copyAll").addEventListener("click", ()=>{
+  const pend = S.q.filter(r=>!r.entered);
+  if(!pend.length) return;
+  copyText(pend.map(lineFor).join("\n"), `Copied ${pend.length} reading${pend.length>1?"s":""}`);
+});
+$("csvBtn").addEventListener("click", downloadCSV);
+$("clearEntered").addEventListener("click", ()=>{
+  S.q = S.q.filter(r=>!r.entered); save(); renderQueue();
+});
+$("clearAll").addEventListener("click", ()=>{
+  if(!confirm("Delete ALL queued readings? Export the CSV first if you need a record.")) return;
+  S.q = []; save(); renderQueue();
+});
+
+/* refresh the default time when returning to the tab */
+document.addEventListener("visibilitychange", ()=>{
+  if(!document.hidden && $("in-time") && !$("in-fc").value && !$("in-ph").value){
+    $("in-time").value = nowHHMM();
+  }
+});
+
+renderPools(); renderCapture(); renderQueue(); liveFlag();
+</script>
+</body>
+</html>

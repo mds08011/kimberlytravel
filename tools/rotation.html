@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<!--
+  ROTATION GRID — Guard Stand Rotation Generator
+  v1.0.0 · 2026-07-07
+  Companion to pumproom.html / readingqueue.html. Single-file, offline, zero deps.
+  Builds a timed stand-rotation grid from the on-shift roster; rebuilds from the
+  current time when a guard goes down without touching completed history.
+  Copy output is formatted for paste into a DigiQuatics staff alert.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#10181d">
+<title>Rotation Grid — Guard Rotations</title>
+<style>
+  :root{
+    --bg:#10181d; --panel:#17232b; --panel2:#1c2a34; --line:#2a3b46;
+    --ink:#e9f1f4; --dim:#8ba1ac; --faint:#5d7280;
+    --water:#46c8dd; --chlor:#f2c53d; --acid:#e5534b; --ok:#55c98c;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;
+    line-height:1.45;padding:0 14px calc(28px + env(safe-area-inset-bottom))}
+  .wrap{max-width:860px;margin:0 auto}
+
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+    padding:18px 2px 12px;border-bottom:1px solid var(--line)}
+  h1{font-size:1.05rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+  h1 .tick{color:var(--water)}
+  header .ver{font-family:var(--mono);font-size:.7rem;color:var(--faint)}
+
+  .microlabel{font-size:.66rem;font-weight:700;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--dim)}
+  section{margin-top:20px}
+  .sechead{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .sechead::after{content:"";flex:1;height:1px;background:var(--line)}
+  .sechead .count{font-family:var(--mono);font-size:.72rem;color:var(--faint)}
+
+  /* shift params */
+  .params{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  @media(max-width:430px){.params{grid-template-columns:1fr 1fr}}
+  .field{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+  .field label{display:block;font-size:.64rem;font-weight:700;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--dim);margin-bottom:3px}
+  .field input,.field select{width:100%;background:transparent;border:none;color:var(--ink);
+    font-family:var(--mono);font-size:1.1rem;font-weight:600;padding:0;color-scheme:dark}
+  .field input:focus,.field select:focus{outline:none}
+  .field:focus-within{border-color:var(--water)}
+  .field select{appearance:none}
+
+  /* chips (guards + stations) */
+  .chips{display:flex;flex-wrap:wrap;gap:7px}
+  .chip{appearance:none;display:inline-flex;align-items:center;gap:8px;cursor:pointer;
+    border:1px solid var(--line);background:var(--panel);color:var(--ink);
+    border-radius:999px;padding:8px 8px 8px 14px;font-size:.88rem;font-weight:600}
+  .chip.off{opacity:.4;text-decoration:line-through}
+  .chip .x{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;
+    border-radius:50%;background:var(--panel2);color:var(--dim);font-size:.8rem;font-style:normal}
+  .chip:focus-visible,.btn:focus-visible{outline:2px solid var(--water);outline-offset:2px}
+  .chip.station{border-color:#3a5060}
+  .addrow{display:flex;gap:8px;margin-top:9px}
+  .addrow input{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    color:var(--ink);font-size:.95rem;padding:10px 12px}
+  .addrow input:focus{outline:none;border-color:var(--water)}
+
+  .rowbtns{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .btn{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink);
+    border-radius:8px;padding:10px 14px;font-size:.86rem;font-weight:600;cursor:pointer}
+  .btn:active{background:var(--panel2)}
+  .btn.primary{border-color:var(--water);color:var(--water)}
+  .btn.big{padding:13px 16px;font-size:.95rem}
+  .btn[disabled]{opacity:.4;cursor:default}
+
+  /* status strip */
+  .status{margin-top:12px;font-family:var(--mono);font-size:.78rem;color:var(--dim);
+    display:flex;gap:16px;flex-wrap:wrap}
+  .status b{color:var(--ink)}
+  .status .bad{color:var(--acid)}
+  .status .warn{color:var(--chlor)}
+
+  /* hazard banner (suite convention) */
+  .hazard{display:none;margin-top:12px;border:1px solid var(--acid);border-radius:10px;
+    background:var(--panel);overflow:hidden}
+  .hazard.show{display:block}
+  .hazard .stripe{height:8px;
+    background:repeating-linear-gradient(-45deg,var(--chlor) 0 10px,#0e1418 10px 20px)}
+  .hazard .msg{padding:10px 12px;font-size:.86rem}
+  .hazard .msg b{color:var(--acid)}
+
+  /* the grid */
+  .gridwrap{margin-top:12px;border:1px solid var(--line);border-radius:12px;
+    overflow-x:auto;-webkit-overflow-scrolling:touch;background:var(--panel)}
+  table{border-collapse:collapse;width:100%;min-width:560px}
+  th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;
+    font-size:.85rem;white-space:nowrap}
+  th{font-size:.62rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--dim);background:var(--panel2);position:sticky;top:0}
+  td.time{font-family:var(--mono);color:var(--dim);font-size:.78rem}
+  td.brk{color:var(--faint);font-size:.8rem}
+  tr.now td{background:rgba(70,200,221,.09)}
+  tr.now td.time{color:var(--water);font-weight:700}
+  tr.past td{opacity:.45}
+  tr.stale td{background:rgba(242,197,61,.05)}
+  .legend{padding:8px 12px;font-size:.72rem;color:var(--faint);border-top:1px solid var(--line)}
+  .empty{padding:26px 14px;text-align:center;color:var(--faint);font-size:.85rem}
+
+  footer{margin-top:26px;border-top:1px solid var(--line);padding-top:12px;
+    font-size:.74rem;color:var(--faint);line-height:1.6}
+  footer code{font-family:var(--mono)}
+
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(8px);
+    background:var(--panel2);border:1px solid var(--water);color:var(--ink);border-radius:8px;
+    padding:8px 16px;font-size:.85rem;opacity:0;pointer-events:none;
+    transition:opacity .2s,transform .2s;max-width:90vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media (prefers-reduced-motion:reduce){.toast{transition:none}}
+
+  /* print: white wall copy, grid only */
+  @media print{
+    body{background:#fff;color:#000;padding:0}
+    header .ver,.pools,.params,.chips,.addrow,.rowbtns,.status,.hazard,footer,.toast,
+    section.setup{display:none !important}
+    h1{color:#000}
+    h1 .tick{color:#000}
+    .gridwrap{border-color:#999;overflow:visible}
+    table{min-width:0}
+    th{background:#eee;color:#000;position:static}
+    th,td{border:1px solid #999;color:#000;white-space:normal}
+    td.time{color:#000}
+    tr.now td,tr.stale td{background:none}
+    tr.past td{opacity:1}
+    .legend{color:#333;border-color:#999}
+    #printTitle{display:block !important;font-family:var(--sans);font-size:1rem;
+      font-weight:700;margin:0 0 8px}
+  }
+  #printTitle{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1><span class="tick">▮</span> Rotation Grid</h1>
+    <span class="ver">stand rotations · v1.0.0 · offline</span>
+  </header>
+
+  <section class="setup" aria-label="Shift parameters">
+    <div class="sechead"><span class="microlabel">Shift</span></div>
+    <div class="params">
+      <div class="field"><label for="pStart">Start</label>
+        <input id="pStart" type="time" value="10:00"></div>
+      <div class="field"><label for="pEnd">End</label>
+        <input id="pEnd" type="time" value="18:00"></div>
+      <div class="field"><label for="pInt">Rotation</label>
+        <select id="pInt">
+          <option value="10">10 min</option>
+          <option value="15" selected>15 min</option>
+          <option value="20">20 min</option>
+          <option value="30">30 min</option>
+        </select></div>
+    </div>
+  </section>
+
+  <section class="setup" aria-label="Stations">
+    <div class="sechead"><span class="microlabel">Stations</span>
+      <span class="count" id="stCount"></span></div>
+    <div class="chips" id="stations"></div>
+    <div class="addrow">
+      <input id="stAdd" type="text" placeholder="Add station (e.g. Comp Deep)" autocapitalize="words">
+      <button class="btn" id="stAddBtn" type="button">Add</button>
+    </div>
+  </section>
+
+  <section class="setup" aria-label="Guards on shift">
+    <div class="sechead"><span class="microlabel">Guards on Shift</span>
+      <span class="count" id="gCount"></span></div>
+    <div class="chips" id="guards"></div>
+    <div class="addrow">
+      <input id="gAdd" type="text" placeholder="Add guard name" autocapitalize="words">
+      <button class="btn" id="gAddBtn" type="button">Add</button>
+    </div>
+    <div class="status" id="status"></div>
+    <div class="hazard" id="hazard" role="alert">
+      <div class="stripe"></div><div class="msg" id="hazardMsg"></div>
+    </div>
+    <div class="rowbtns">
+      <button class="btn primary big" id="buildBtn" type="button">Build grid</button>
+      <button class="btn big" id="rebuildBtn" type="button">Rebuild from now</button>
+    </div>
+  </section>
+
+  <section aria-label="Rotation grid">
+    <div class="sechead"><span class="microlabel">Grid</span>
+      <span class="count" id="gridStamp"></span></div>
+    <div id="printTitle"></div>
+    <div class="gridwrap" id="gridwrap">
+      <div class="empty">No grid yet. Tap chips to toggle who's in, then <b>Build grid</b>.</div>
+    </div>
+    <div class="rowbtns">
+      <button class="btn primary" id="copyNow" type="button">Copy from now</button>
+      <button class="btn" id="copyAll" type="button">Copy full grid</button>
+      <button class="btn" id="printBtn" type="button">Print wall copy</button>
+    </div>
+  </section>
+
+  <footer>
+    Tap a guard or station chip to toggle it out (strikethrough = out) — chips stay saved for
+    tomorrow, <b>✕</b> deletes for good. <b>Build grid</b> makes a fresh rotation from shift start.
+    When someone goes down mid-shift, toggle them off and hit <b>Rebuild from now</b>:
+    completed blocks are frozen, only the future re-flows (amber rows mark pre-rebuild plan).
+    Breaks are distributed automatically — the max-consecutive readout above the buttons is your
+    policy check. <b>Copy from now</b> is sized for a DigiQuatics staff alert.
+    Everything persists in this browser (<code>localStorage</code>).
+  </footer>
+</div>
+
+<div class="toast" id="toast">Copied</div>
+
+<script>
+"use strict";
+/* ================= CONFIG — default seed lists (editable in the UI) ================= */
+const DEFAULT_STATIONS = ["Comp North","Comp South","Comp Deep","Instructional","Splash Pad"];
+const LS_KEY = "rotationgrid.v1";
+
+/* ================= state ================= */
+let S = load();
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw){ const p = JSON.parse(raw); if(p && Array.isArray(p.guards)) return p; }
+  }catch(e){}
+  return {
+    guards:[], // {name, active}
+    stations: DEFAULT_STATIONS.map(n=>({name:n, active:true})),
+    start:"10:00", end:"18:00", interval:15,
+    grid:null   // {builtIso, interval, rows:[{startMin, cells:{station:guard}, breaks:[], stale?}]}
+  };
+}
+function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){} }
+const $   = id => document.getElementById(id);
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const activeG = () => S.guards.filter(g=>g.active);
+const activeS = () => S.stations.filter(s=>s.active);
+
+/* ================= time helpers ================= */
+const toMin   = hhmm => { const [h,m]=hhmm.split(":").map(Number); return h*60+m; };
+const nowMin  = () => { const d=new Date(); return d.getHours()*60+d.getMinutes(); };
+function t12(min){
+  min = ((min%1440)+1440)%1440;
+  const h=Math.floor(min/60), m=min%60, ap=h>=12?"PM":"AM";
+  return `${((h+11)%12)+1}:${String(m).padStart(2,"0")} ${ap}`;
+}
+
+/* ================= rotation engine ================= */
+/* positions: station + break slots with breaks distributed evenly through the cycle */
+function buildPositions(guardCount, stations){
+  const N=guardCount, B=N-stations.length, pos=[];
+  let si=0;
+  for(let i=0;i<N;i++){
+    if(B>0 && Math.floor((i+1)*B/N) > Math.floor(i*B/N)) pos.push(null);      // break slot
+    else pos.push(stations[si++].name);
+  }
+  return pos;
+}
+function maxConsecutiveStands(pos){
+  if(!pos.length || pos.every(p=>p!==null)) return pos.length;
+  let mx=0,run=0;
+  for(let i=0;i<pos.length*2;i++){
+    if(pos[i%pos.length]!==null){ run++; mx=Math.max(mx,run); } else run=0;
+  }
+  return mx;
+}
+/* rows for [fromMin, endMin), guard g occupies position (g+r) mod N at local row r */
+function buildRows(fromMin, endMin, interval, guards, stations){
+  const N=guards.length, pos=buildPositions(N, stations), rows=[];
+  let r=0;
+  for(let t=fromMin; t<endMin; t+=interval, r++){
+    const cells={}, breaks=[];
+    for(let i=0;i<N;i++){
+      const g = guards[((i - r) % N + N) % N].name;
+      if(pos[i]===null) breaks.push(g); else cells[pos[i]]=g;
+    }
+    rows.push({startMin:t, cells, breaks});
+  }
+  return rows;
+}
+
+/* ================= validation ================= */
+function checkRoster(){
+  const g=activeG().length, s=activeS().length;
+  const msgs=[];
+  if(s===0) msgs.push({lvl:"bad", txt:"No active stations."});
+  if(g===0) msgs.push({lvl:"bad", txt:"No active guards."});
+  if(g>0 && s>0 && g<s) msgs.push({lvl:"bad",
+    txt:`<b>${g} guards can't cover ${s} stations.</b> Toggle off ${s-g} station${s-g>1?"s":""} (close them) or add guards.`});
+  if(g===s && g>0) msgs.push({lvl:"warn",
+    txt:`Guards = stations: <b>zero break slots</b> — everyone is in a stand all shift. Add a guard.`});
+  return msgs;
+}
+
+/* ================= render ================= */
+function renderChips(){
+  $("stations").innerHTML = S.stations.map((s,i)=>`
+    <button class="chip station ${s.active?"":"off"}" type="button" data-kind="st" data-i="${i}"
+      aria-pressed="${s.active}">${esc(s.name)}<span class="x" data-del="1" role="button" aria-label="Delete ${esc(s.name)}">✕</span></button>`).join("");
+  $("guards").innerHTML = S.guards.length ? S.guards.map((g,i)=>`
+    <button class="chip ${g.active?"":"off"}" type="button" data-kind="g" data-i="${i}"
+      aria-pressed="${g.active}">${esc(g.name)}<span class="x" data-del="1" role="button" aria-label="Delete ${esc(g.name)}">✕</span></button>`).join("")
+    : `<span style="color:var(--faint);font-size:.85rem">No guards yet — add today's shift below.</span>`;
+  $("stCount").textContent = `${activeS().length} open`;
+  $("gCount").textContent  = `${activeG().length} in rotation`;
+  renderStatus();
+}
+
+function renderStatus(){
+  const g=activeG(), st=activeS(), msgs=checkRoster();
+  const errs=msgs.filter(m=>m.lvl==="bad");
+  $("hazard").classList.toggle("show", errs.length>0);
+  $("hazardMsg").innerHTML = errs.map(m=>m.txt).join("<br>");
+  let line="";
+  if(!errs.length && g.length && st.length){
+    const pos=buildPositions(g.length, st);
+    const mx=maxConsecutiveStands(pos)*S.interval;
+    const brk=g.length-st.length;
+    line = `<span>break slots/block: <b>${brk}</b></span>
+            <span>max consecutive in stand: <b class="${mx>60?"warn":""}">${mx} min</b>${mx>60?" ⚠":""}</span>`;
+  }
+  const warn=msgs.find(m=>m.lvl==="warn");
+  if(warn) line += `<span class="warn">${warn.txt}</span>`;
+  $("status").innerHTML=line;
+}
+
+function stationColumns(rows){
+  const cols=[]; const seen=new Set();
+  rows.forEach(r=>Object.keys(r.cells).forEach(k=>{ if(!seen.has(k)){seen.add(k);cols.push(k);} }));
+  return cols;
+}
+
+function renderGrid(){
+  const g=S.grid;
+  $("gridStamp").textContent = g ? `built ${g.builtStamp}` : "";
+  if(!g || !g.rows.length){
+    $("gridwrap").innerHTML = `<div class="empty">No grid yet. Tap chips to toggle who's in, then <b>Build grid</b>.</div>`;
+    $("printTitle").textContent="";
+    return;
+  }
+  const cols=stationColumns(g.rows), nm=nowMin();
+  const head = `<tr><th>Time</th>${cols.map(c=>`<th>${esc(c)}</th>`).join("")}<th>Break</th></tr>`;
+  const body = g.rows.map(r=>{
+    const isNow = nm>=r.startMin && nm<r.startMin+g.interval;
+    const cls = [isNow?"now":"", (!isNow && r.startMin+g.interval<=nm)?"past":"", r.stale?"stale":""].filter(Boolean).join(" ");
+    return `<tr class="${cls}">
+      <td class="time">${t12(r.startMin)}</td>
+      ${cols.map(c=>`<td>${esc(r.cells[c]||"—")}</td>`).join("")}
+      <td class="brk">${r.breaks.map(esc).join(", ")||"—"}</td>
+    </tr>`;
+  }).join("");
+  $("gridwrap").innerHTML = `<table>${head}${body}</table>
+    <div class="legend">highlight = current block · dimmed = completed · amber tint = superseded plan kept for record</div>`;
+  const d=new Date();
+  $("printTitle").textContent =
+    `Guard Rotation — ${d.toLocaleDateString([],{weekday:"short",month:"2-digit",day:"2-digit"})} — ${t12(g.rows[0].startMin)}–${t12(g.rows[g.rows.length-1].startMin+g.interval)} — ${g.interval} min blocks`;
+}
+
+/* ================= build / rebuild ================= */
+function stampNow(){
+  return new Date().toLocaleString([],{month:"numeric",day:"numeric",hour:"numeric",minute:"2-digit"});
+}
+function buildGrid(){
+  if(checkRoster().some(m=>m.lvl==="bad")){ toast("Fix the roster first"); return; }
+  const start=toMin(S.start), end=toMin(S.end);
+  if(end<=start){ toast("End must be after start"); return; }
+  S.grid = { builtStamp:stampNow(), interval:S.interval,
+             rows: buildRows(start, end, S.interval, activeG(), activeS()) };
+  save(); renderGrid(); toast("Grid built");
+}
+function rebuildFromNow(){
+  if(!S.grid || !S.grid.rows.length){ buildGrid(); return; }
+  if(checkRoster().some(m=>m.lvl==="bad")){ toast("Fix the roster first"); return; }
+  const g=S.grid, nm=nowMin(), end=toMin(S.end);
+  const keep = g.rows.filter(r=>r.startMin + g.interval <= nm);          // fully completed blocks
+  const from = keep.length ? keep[keep.length-1].startMin + g.interval
+                           : Math.max(toMin(S.start), g.rows[0].startMin);
+  if(from>=end){ toast("Shift is over — nothing to rebuild"); return; }
+  keep.forEach(r=>r.stale=false);
+  const fresh = buildRows(from, end, g.interval, activeG(), activeS());
+  S.grid = { builtStamp:stampNow()+" (rebuilt)", interval:g.interval, rows:[...keep, ...fresh] };
+  save(); renderGrid();
+  toast(`Rebuilt from ${t12(from)} with ${activeG().length} guards`);
+}
+
+/* ================= copy / print ================= */
+function toast(msg){
+  const t=$("toast"); t.textContent=msg;
+  t.classList.add("show"); clearTimeout(toast._t);
+  toast._t=setTimeout(()=>t.classList.remove("show"),1900);
+}
+function copyText(text, okMsg){
+  const done = ok => toast(ok?okMsg:"Copy failed — long-press to select");
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(()=>done(true)).catch(()=>fallbackCopy(text,done));
+  } else fallbackCopy(text,done);
+}
+function fallbackCopy(text,done){
+  const ta=document.createElement("textarea");
+  ta.value=text; ta.style.position="fixed"; ta.style.opacity="0";
+  document.body.appendChild(ta); ta.select();
+  let ok=false; try{ ok=document.execCommand("copy"); }catch(e){}
+  document.body.removeChild(ta); done(ok);
+}
+function gridText(rows){
+  if(!rows.length) return "";
+  const g=S.grid, d=new Date();
+  const hdr=`GUARD ROTATION — ${d.toLocaleDateString([],{weekday:"short",month:"2-digit",day:"2-digit"})} — ${t12(rows[0].startMin)}–${t12(rows[rows.length-1].startMin+g.interval)} — ${g.interval} min blocks`;
+  const lines=rows.map(r=>{
+    const seg=Object.entries(r.cells).map(([s,gd])=>`${s}: ${gd}`);
+    if(r.breaks.length) seg.push(`Break: ${r.breaks.join(", ")}`);
+    return `${t12(r.startMin)}  ${seg.join("  |  ")}`;
+  });
+  return [hdr, ...lines].join("\n");
+}
+
+/* ================= events ================= */
+function chipHandler(kind){
+  return e=>{
+    const chip=e.target.closest(".chip"); if(!chip) return;
+    const arr = kind==="g" ? S.guards : S.stations;
+    const i = +chip.dataset.i;
+    if(e.target.dataset.del){
+      arr.splice(i,1);
+    } else {
+      arr[i].active = !arr[i].active;
+    }
+    save(); renderChips();
+  };
+}
+$("guards").addEventListener("click", chipHandler("g"));
+$("stations").addEventListener("click", chipHandler("st"));
+
+function addItem(inputId, arr){
+  const inp=$(inputId), name=inp.value.trim();
+  if(!name) return;
+  if(arr.some(x=>x.name.toLowerCase()===name.toLowerCase())){ toast("Already in the list"); return; }
+  arr.push({name, active:true});
+  inp.value=""; inp.focus();
+  save(); renderChips();
+}
+$("gAddBtn").addEventListener("click", ()=>addItem("gAdd", S.guards));
+$("stAddBtn").addEventListener("click", ()=>addItem("stAdd", S.stations));
+$("gAdd").addEventListener("keydown", e=>{ if(e.key==="Enter") addItem("gAdd", S.guards); });
+$("stAdd").addEventListener("keydown", e=>{ if(e.key==="Enter") addItem("stAdd", S.stations); });
+
+["pStart","pEnd","pInt"].forEach(id=>$(id).addEventListener("change", ()=>{
+  S.start=$("pStart").value; S.end=$("pEnd").value; S.interval=+$("pInt").value;
+  save(); renderStatus();
+}));
+
+$("buildBtn").addEventListener("click", buildGrid);
+$("rebuildBtn").addEventListener("click", rebuildFromNow);
+$("printBtn").addEventListener("click", ()=>window.print());
+$("copyAll").addEventListener("click", ()=>{
+  if(!S.grid){ toast("Build a grid first"); return; }
+  copyText(gridText(S.grid.rows), "Copied full grid");
+});
+$("copyNow").addEventListener("click", ()=>{
+  if(!S.grid){ toast("Build a grid first"); return; }
+  const nm=nowMin();
+  const rows=S.grid.rows.filter(r=>r.startMin + S.grid.interval > nm);
+  if(!rows.length){ toast("Shift is over"); return; }
+  copyText(gridText(rows), `Copied ${rows.length} blocks — paste into staff alert`);
+});
+
+/* keep the "now" highlight live */
+setInterval(()=>{ if(S.grid) renderGrid(); }, 60000);
+
+/* ================= init ================= */
+$("pStart").value=S.start; $("pEnd").value=S.end; $("pInt").value=S.interval;
+renderChips(); renderGrid();
+</script>
+</body>
+</html>

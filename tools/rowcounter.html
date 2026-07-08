@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<!--
+  ROW COUNTER — Persistent Row & Repeat Tracker
+  v1.0.0 · 2026-07-07
+  Fiber-arts suite, companion to skeinmath.html / htv.html.
+  Single-file, offline, zero dependencies. Multiple named projects, each with a
+  row count, an auto-wrapping pattern-repeat ring, and row-pinned notes that
+  surface as you reach them. Every tap writes to localStorage instantly —
+  a dead battery loses nothing. Screen Wake Lock keeps the tablet lit mid-project.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1b1512">
+<title>Row Counter — Rows & Repeats</title>
+<style>
+  :root{
+    --bg:#1b1512; --panel:#241c17; --panel2:#2d231c; --line:#3e3128;
+    --ink:#f0e7dc; --dim:#b3a494; --faint:#7d7062;
+    --madder:#e08484; --indigo:#8fa8dc; --weld:#d9a441; --leaf:#8fbf96;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --serif:"Iowan Old Style",Palatino,"Palatino Linotype",Georgia,serif;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;
+    line-height:1.5;padding:0 14px calc(28px + env(safe-area-inset-bottom));
+    -webkit-user-select:none;user-select:none;touch-action:manipulation}
+  input,textarea{-webkit-user-select:text;user-select:text}
+  .wrap{max-width:560px;margin:0 auto}
+
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+    padding:20px 2px 14px;border-bottom:1px solid var(--line)}
+  h1{font-family:var(--serif);font-size:1.45rem;font-weight:600;font-style:italic}
+  h1 .amp{color:var(--madder)}
+  header .ver{font-family:var(--mono);font-size:.7rem;color:var(--faint)}
+
+  section{margin-top:18px}
+  h2{font-family:var(--serif);font-size:1.05rem;font-weight:600;font-style:italic;
+    display:flex;align-items:center;gap:10px;margin-bottom:8px}
+  h2::after{content:"";flex:1;height:1px;background:var(--line)}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+
+  /* project row */
+  .toolrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  select.big{flex:1;min-width:140px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:8px;color:var(--ink);font-size:.92rem;padding:10px;appearance:none}
+  .btn{appearance:none;border:1px solid var(--line);background:var(--panel2);color:var(--ink);
+    border-radius:8px;padding:9px 13px;font-size:.83rem;font-weight:600;cursor:pointer}
+  .btn:active{background:var(--panel)}
+  .btn.primary{border-color:var(--madder);color:var(--madder)}
+  .btn.small{padding:6px 10px;font-size:.76rem}
+  .btn:focus-visible,select:focus-visible{outline:2px solid var(--madder);outline-offset:2px}
+
+  /* counter display */
+  .counter{margin-top:14px;text-align:center;position:relative}
+  .ringbox{position:relative;width:min(66vw,270px);margin:0 auto}
+  .ringbox svg{display:block;width:100%;height:auto}
+  .midnum{position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;pointer-events:none}
+  .midnum .n{font-family:var(--mono);font-size:clamp(3rem,17vw,4.6rem);font-weight:700;
+    line-height:1;color:var(--ink)}
+  .midnum .lbl{font-size:.66rem;font-weight:700;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--faint);margin-top:4px}
+  .repline{margin-top:10px;font-family:var(--mono);font-size:.92rem;color:var(--indigo)}
+  .repline b{color:var(--ink)}
+  .progline{margin-top:4px;font-family:var(--mono);font-size:.78rem;color:var(--dim)}
+  .updated{margin-top:4px;font-family:var(--mono);font-size:.68rem;color:var(--faint)}
+
+  /* note banners */
+  .rownote{margin-top:12px;border-radius:10px;padding:10px 12px;font-size:.92rem;
+    border:1px solid var(--weld);color:var(--weld);display:none;text-align:left}
+  .rownote.show{display:block}
+  .rownote .tag{font-size:.62rem;font-weight:800;letter-spacing:.14em;
+    text-transform:uppercase;display:block;margin-bottom:2px}
+  .rownote.next{border-color:var(--line);color:var(--dim)}
+
+  /* tap buttons */
+  .taps{display:grid;grid-template-columns:1fr 2.6fr;gap:10px;margin-top:14px}
+  .tap{appearance:none;border:1px solid var(--line);border-radius:16px;cursor:pointer;
+    font-family:var(--mono);font-weight:700;color:var(--ink);background:var(--panel2);
+    min-height:104px;font-size:2rem}
+  .tap.plus{background:var(--madder);color:#2a1414;border-color:var(--madder);font-size:2.6rem}
+  .tap:active{transform:scale(.985);filter:brightness(1.08)}
+  .tap:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+  .tinyrow{display:flex;gap:8px;margin-top:10px;justify-content:center;flex-wrap:wrap}
+
+  /* settings + notes */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  @media(max-width:400px){.grid{grid-template-columns:repeat(2,1fr)}}
+  .field{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+  .field label{display:block;font-size:.62rem;font-weight:700;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--dim);margin-bottom:2px}
+  .field input{width:100%;background:transparent;border:none;color:var(--ink);
+    font-family:var(--mono);font-size:1.1rem;font-weight:600;padding:0}
+  .field input:focus{outline:none}
+  .field:focus-within{border-color:var(--madder)}
+  input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  input[type=number]{-moz-appearance:textfield}
+
+  .noteadd{display:flex;gap:8px;margin-top:10px}
+  .noteadd .field.rowno{flex:0 0 86px}
+  .noteadd .field.txt{flex:1}
+  .noteadd .field.txt input{font-family:var(--sans);font-size:.95rem;font-weight:500}
+  .notelist{margin-top:10px}
+  .noterow{display:flex;gap:10px;align-items:center;padding:8px 4px;
+    border-bottom:1px dashed var(--line);font-size:.88rem}
+  .noterow:last-child{border-bottom:none}
+  .noterow.past{opacity:.4}
+  .noterow .rw{font-family:var(--mono);color:var(--indigo);flex:0 0 62px}
+  .noterow .tx{flex:1}
+  .noterow .x{appearance:none;border:1px solid var(--line);background:var(--panel2);
+    color:var(--dim);border-radius:7px;width:32px;height:32px;cursor:pointer;flex:none}
+
+  footer{margin-top:26px;border-top:1px solid var(--line);padding-top:12px;
+    font-size:.75rem;color:var(--faint);line-height:1.65}
+  footer code{font-family:var(--mono)}
+
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(8px);
+    background:var(--panel2);border:1px solid var(--madder);color:var(--ink);border-radius:8px;
+    padding:8px 16px;font-size:.85rem;opacity:0;pointer-events:none;
+    transition:opacity .2s,transform .2s;max-width:90vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media (prefers-reduced-motion:reduce){.toast{transition:none}.tap:active{transform:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Row <span class="amp">&amp;</span> Repeat</h1>
+    <span class="ver">row counter · v1.0.0 · offline</span>
+  </header>
+
+  <section aria-label="Project">
+    <div class="toolrow">
+      <select class="big" id="projSel" aria-label="Project"></select>
+      <button class="btn" id="projNew" type="button">New</button>
+      <button class="btn" id="projRen" type="button">Rename</button>
+      <button class="btn" id="projDel" type="button">Delete</button>
+    </div>
+  </section>
+
+  <section aria-label="Counter">
+    <div class="card counter">
+      <div class="ringbox">
+        <svg id="ring" viewBox="0 0 100 100" role="img" aria-label="Repeat progress ring"></svg>
+        <div class="midnum">
+          <span class="n" id="doneN">0</span>
+          <span class="lbl">rows done</span>
+        </div>
+      </div>
+      <div class="repline" id="repLine"></div>
+      <div class="progline" id="progLine"></div>
+      <div class="updated" id="updated"></div>
+      <div class="rownote" id="noteThis"><span class="tag">This row</span><span id="noteThisTx"></span></div>
+      <div class="rownote next" id="noteNext"><span class="tag">Next row</span><span id="noteNextTx"></span></div>
+      <div class="taps">
+        <button class="tap" id="minus" type="button" aria-label="Undo one row">−</button>
+        <button class="tap plus" id="plus" type="button" aria-label="Row done">＋</button>
+      </div>
+      <div class="tinyrow">
+        <button class="btn small" id="wakeBtn" type="button">☾ Keep screen awake</button>
+        <button class="btn small" id="resetBtn" type="button">Reset count</button>
+      </div>
+    </div>
+  </section>
+
+  <section aria-label="Pattern setup">
+    <h2>Pattern setup</h2>
+    <div class="card">
+      <div class="grid">
+        <div class="field"><label for="repLen">Repeat rows</label>
+          <input id="repLen" type="number" inputmode="numeric" min="0" step="1" placeholder="—"></div>
+        <div class="field"><label for="repTgt">Repeats total</label>
+          <input id="repTgt" type="number" inputmode="numeric" min="0" step="1" placeholder="—"></div>
+        <div class="field"><label for="rowTgt">Total rows</label>
+          <input id="rowTgt" type="number" inputmode="numeric" min="0" step="1" placeholder="—"></div>
+      </div>
+      <div class="noteadd">
+        <div class="field rowno"><label for="noteRow">Row</label>
+          <input id="noteRow" type="number" inputmode="numeric" min="1" step="1" placeholder="12"></div>
+        <div class="field txt"><label for="noteTx">Note for that row</label>
+          <input id="noteTx" type="text" placeholder="e.g. decrease row · change to color B"></div>
+        <button class="btn primary" id="noteAdd" type="button">Pin</button>
+      </div>
+      <div class="notelist" id="noteList"></div>
+    </div>
+  </section>
+
+  <footer>
+    Tap <b>＋</b> when you finish a row — the big number is rows completed, the line under it
+    is the row now on your needles. The ring is your stitch marker: one lap per pattern repeat,
+    a tick per row. Pinned notes surface automatically when their row comes up.
+    Every tap saves instantly (<code>localStorage</code>) — closing the tab or killing the
+    battery loses nothing. Wake Lock needs a recent browser; if the button is dim, it isn't
+    supported and the phone's display timeout applies.
+  </footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const LS_KEY = "rowcounter.v1";
+
+/* ================= state ================= */
+let S = load();
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw){ const p = JSON.parse(raw); if(p && p.projects) return p; }
+  }catch(e){}
+  const id = mkid();
+  return { active:id, projects:{ [id]:mkproj("My project") } };
+}
+function mkid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+function mkproj(name){
+  return { name, done:0, repLen:0, repTgt:0, rowTgt:0, notes:{}, updated:Date.now() };
+}
+function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){} }
+const $   = id => document.getElementById(id);
+const P   = () => S.projects[S.active];
+const num = v => { const n=parseInt(v,10); return Number.isFinite(n)&&n>0 ? n : 0; };
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+/* ================= repeat math ================= */
+function repeatInfo(p){
+  if(!p.repLen || p.repLen<2) return null;
+  const working = p.done+1;
+  return {
+    pos: (p.done % p.repLen)+1,          // row-in-repeat of the row on the needles
+    rep: Math.floor(p.done/p.repLen)+1,  // which repeat that row belongs to
+    len: p.repLen, working
+  };
+}
+function totalTarget(p){
+  if(p.rowTgt) return p.rowTgt;
+  if(p.repLen>1 && p.repTgt) return p.repLen*p.repTgt;
+  return 0;
+}
+
+/* ================= ring (stitch marker) ================= */
+function drawRing(){
+  const p=P(), ri=repeatInfo(p);
+  const cx=50, cy=50, R=46, sw=5;
+  const el=[];
+  el.push('<circle cx="'+cx+'" cy="'+cy+'" r="'+R+'" fill="none" stroke="var(--panel2)" stroke-width="'+sw+'"/>');
+  if(ri){
+    const frac = (p.done % ri.len)/ri.len;   // completed rows in the current lap
+    if(frac>0){
+      const C = 2*Math.PI*R;
+      el.push('<circle cx="'+cx+'" cy="'+cy+'" r="'+R+'" fill="none" stroke="var(--madder)" stroke-width="'+sw+
+        '" stroke-linecap="round" stroke-dasharray="'+(C*frac)+' '+C+
+        '" transform="rotate(-90 '+cx+' '+cy+')"/>');
+    }
+    for(let i=0;i<ri.len;i++){
+      const a=-Math.PI/2 + i/ri.len*2*Math.PI;
+      const x1=cx+Math.cos(a)*(R-3.6), y1=cy+Math.sin(a)*(R-3.6);
+      const x2=cx+Math.cos(a)*(R+3.6), y2=cy+Math.sin(a)*(R+3.6);
+      el.push('<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="var(--bg)" stroke-width="1.6"/>');
+    }
+    // the marker bead at the working row's slot
+    const wa=-Math.PI/2 + (ri.pos-0.5)/ri.len*2*Math.PI;
+    el.push('<circle cx="'+(cx+Math.cos(wa)*R)+'" cy="'+(cy+Math.sin(wa)*R)+'" r="4" fill="var(--weld)" stroke="var(--bg)" stroke-width="1.4"/>');
+  } else {
+    const tgt=totalTarget(p);
+    if(tgt>0 && p.done>0){
+      const C=2*Math.PI*R, frac=Math.min(1,p.done/tgt);
+      el.push('<circle cx="'+cx+'" cy="'+cy+'" r="'+R+'" fill="none" stroke="var(--indigo)" stroke-width="'+sw+
+        '" stroke-linecap="round" stroke-dasharray="'+(C*frac)+' '+C+'" transform="rotate(-90 '+cx+' '+cy+')"/>');
+    }
+  }
+  $("ring").innerHTML = el.join("");
+}
+
+/* ================= render ================= */
+function renderProjects(){
+  const ids=Object.keys(S.projects).sort((a,b)=>S.projects[b].updated-S.projects[a].updated);
+  $("projSel").innerHTML = ids.map(id=>
+    '<option value="'+id+'"'+(id===S.active?" selected":"")+'>'+esc(S.projects[id].name)+'</option>').join("");
+}
+function renderCounter(){
+  const p=P(), ri=repeatInfo(p), tgt=totalTarget(p);
+  $("doneN").textContent = p.done;
+  const working=p.done+1;
+  let rep = 'working row <b>'+working+'</b>';
+  if(ri){
+    rep += ' · row <b>'+ri.pos+'</b> of '+ri.len+' in repeat · repeat <b>'+ri.rep+'</b>'+(p.repTgt?' of '+p.repTgt:'');
+  }
+  $("repLine").innerHTML = rep;
+  if(tgt>0){
+    const left=tgt-p.done;
+    $("progLine").textContent = left>0
+      ? p.done+' / '+tgt+' rows · '+Math.floor(p.done/tgt*100)+'% · '+left+' to go'
+      : '✦ '+p.done+' / '+tgt+' — target reached';
+    $("progLine").style.color = left>0 ? "var(--dim)" : "var(--leaf)";
+  } else $("progLine").textContent = "";
+  $("updated").textContent = "last tap "+new Date(p.updated).toLocaleString([],
+    {month:"numeric",day:"numeric",hour:"numeric",minute:"2-digit"});
+  // note banners for the working row and the one after
+  const nThis=p.notes[working], nNext=p.notes[working+1];
+  $("noteThis").classList.toggle("show", !!nThis);
+  $("noteThisTx").textContent = nThis||"";
+  $("noteNext").classList.toggle("show", !!nNext);
+  $("noteNextTx").textContent = nNext||"";
+  drawRing();
+}
+function renderSetup(){
+  const p=P();
+  $("repLen").value = p.repLen||"";
+  $("repTgt").value = p.repTgt||"";
+  $("rowTgt").value = p.rowTgt||"";
+  renderNotes();
+}
+function renderNotes(){
+  const p=P(), rows=Object.keys(p.notes).map(Number).sort((a,b)=>a-b);
+  $("noteList").innerHTML = rows.length ? rows.map(r=>
+    '<div class="noterow'+(r<=p.done?' past':'')+'" data-row="'+r+'">'+
+      '<span class="rw">row '+r+'</span><span class="tx">'+esc(p.notes[r])+'</span>'+
+      '<button class="x" type="button" aria-label="Delete note for row '+r+'">✕</button></div>').join("")
+    : '<div style="color:var(--faint);font-size:.8rem;font-style:italic;font-family:var(--serif)">No pinned notes yet.</div>';
+}
+function renderAll(){ renderProjects(); renderCounter(); renderSetup(); }
+
+/* ================= counting ================= */
+function buzz(){ if(navigator.vibrate) try{ navigator.vibrate(12); }catch(e){} }
+function bump(d){
+  const p=P();
+  p.done = Math.max(0, p.done+d);
+  p.updated = Date.now();
+  save(); renderCounter(); renderProjects();
+  if(d>0) buzz();
+}
+$("plus").addEventListener("click", ()=>bump(1));
+$("minus").addEventListener("click", ()=>bump(-1));
+$("resetBtn").addEventListener("click", ()=>{
+  if(!confirm('Reset "'+P().name+'" to zero rows?')) return;
+  P().done=0; P().updated=Date.now();
+  save(); renderCounter();
+});
+
+/* ================= wake lock ================= */
+let wakeLock=null, wakeWanted=false;
+const wakeSupported = "wakeLock" in navigator;
+async function acquireWake(){
+  try{
+    wakeLock = await navigator.wakeLock.request("screen");
+    wakeLock.addEventListener("release", ()=>{ wakeLock=null; renderWake(); });
+  }catch(e){ wakeWanted=false; toast("Couldn't keep the screen awake"); }
+  renderWake();
+}
+function renderWake(){
+  const b=$("wakeBtn");
+  if(!wakeSupported){ b.disabled=true; b.textContent="☾ Wake Lock unsupported"; b.style.opacity=.4; return; }
+  b.textContent = wakeLock ? "☀ Screen staying awake" : "☾ Keep screen awake";
+  b.style.borderColor = wakeLock ? "var(--weld)" : "";
+  b.style.color = wakeLock ? "var(--weld)" : "";
+}
+$("wakeBtn").addEventListener("click", async ()=>{
+  if(wakeLock){ wakeWanted=false; await wakeLock.release(); wakeLock=null; renderWake(); }
+  else { wakeWanted=true; acquireWake(); }
+});
+document.addEventListener("visibilitychange", ()=>{
+  if(wakeWanted && !wakeLock && document.visibilityState==="visible") acquireWake();
+});
+
+/* ================= projects ================= */
+$("projSel").addEventListener("change", e=>{
+  S.active=e.target.value; save(); renderAll();
+});
+$("projNew").addEventListener("click", ()=>{
+  const name=prompt("Name the project:");
+  if(!name || !name.trim()) return;
+  const id=mkid();
+  S.projects[id]=mkproj(name.trim());
+  S.active=id; save(); renderAll();
+});
+$("projRen").addEventListener("click", ()=>{
+  const name=prompt("Rename project:", P().name);
+  if(!name || !name.trim()) return;
+  P().name=name.trim(); P().updated=Date.now();
+  save(); renderProjects();
+});
+$("projDel").addEventListener("click", ()=>{
+  const ids=Object.keys(S.projects);
+  if(ids.length<2){ toast("Can't delete the only project"); return; }
+  if(!confirm('Delete "'+P().name+'" and its count? This can\'t be undone.')) return;
+  delete S.projects[S.active];
+  S.active=Object.keys(S.projects)[0];
+  save(); renderAll();
+});
+
+/* ================= setup & notes ================= */
+["repLen","repTgt","rowTgt"].forEach(id=>$(id).addEventListener("input", ()=>{
+  const p=P();
+  p.repLen=num($("repLen").value);
+  p.repTgt=num($("repTgt").value);
+  p.rowTgt=num($("rowTgt").value);
+  p.updated=Date.now();
+  save(); renderCounter();
+}));
+$("noteAdd").addEventListener("click", ()=>{
+  const r=num($("noteRow").value), tx=$("noteTx").value.trim();
+  if(!r || !tx){ toast("Need a row number and a note"); return; }
+  P().notes[r]=tx; P().updated=Date.now();
+  $("noteRow").value=""; $("noteTx").value="";
+  save(); renderNotes(); renderCounter();
+  toast("Pinned to row "+r);
+});
+$("noteTx").addEventListener("keydown", e=>{ if(e.key==="Enter") $("noteAdd").click(); });
+$("noteList").addEventListener("click", e=>{
+  if(!e.target.classList.contains("x")) return;
+  const r=e.target.closest(".noterow").dataset.row;
+  delete P().notes[r]; P().updated=Date.now();
+  save(); renderNotes(); renderCounter();
+});
+
+/* ================= toast ================= */
+function toast(msg){
+  const t=$("toast"); t.textContent=msg;
+  t.classList.add("show"); clearTimeout(toast._t);
+  toast._t=setTimeout(()=>t.classList.remove("show"),1900);
+}
+
+renderAll(); renderWake();
+</script>
+</body>
+</html>

@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<!--
+  HTV PLACEMENT — Cricut Vinyl Sizing & Placement Calculator
+  v1.0.0 · 2026-07-07
+  Fiber-arts suite, companion to skeinmath.html. Single-file, offline, zero deps.
+  Garment/size tables → recommended decal width + placement offset, aspect-ratio
+  constrained cut dimensions for Design Space, scaled placement diagram, and a
+  batch cut list with 12" roll estimate for size runs (e.g. staff shirts).
+  Edit the GARMENTS table at the top of the script to tune house numbers.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1b1512">
+<title>HTV Placement — Vinyl Sizing</title>
+<style>
+  :root{
+    --bg:#1b1512; --panel:#241c17; --panel2:#2d231c; --line:#3e3128;
+    --ink:#f0e7dc; --dim:#b3a494; --faint:#7d7062;
+    --madder:#e08484; --indigo:#8fa8dc; --weld:#d9a441; --leaf:#8fbf96;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --serif:"Iowan Old Style",Palatino,"Palatino Linotype",Georgia,serif;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;
+    line-height:1.5;padding:0 14px calc(28px + env(safe-area-inset-bottom))}
+  .wrap{max-width:680px;margin:0 auto}
+
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+    padding:20px 2px 14px;border-bottom:1px solid var(--line)}
+  h1{font-family:var(--serif);font-size:1.45rem;font-weight:600;font-style:italic}
+  h1 .amp{color:var(--madder)}
+  header .ver{font-family:var(--mono);font-size:.7rem;color:var(--faint)}
+
+  section{margin-top:22px}
+  h2{font-family:var(--serif);font-size:1.08rem;font-weight:600;font-style:italic;
+    display:flex;align-items:center;gap:10px;margin-bottom:4px}
+  h2::after{content:"";flex:1;height:1px;background:var(--line)}
+  .sub{font-size:.8rem;color:var(--dim);margin-bottom:12px}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+
+  .toolrow{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+  select.big{flex:1;min-width:130px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:8px;color:var(--ink);font-size:.9rem;padding:9px 10px;appearance:none}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;
+    flex-wrap:wrap}
+  .seg button{appearance:none;border:none;background:var(--panel2);color:var(--dim);
+    padding:8px 12px;font-size:.8rem;font-weight:700;cursor:pointer}
+  .seg button[aria-pressed="true"]{background:var(--madder);color:#2a1414}
+  .seg button[disabled]{opacity:.3;cursor:default}
+  .seg button:focus-visible{outline:2px solid var(--madder);outline-offset:-2px}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .field{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+  .field label{display:block;font-size:.64rem;font-weight:700;letter-spacing:.13em;
+    text-transform:uppercase;color:var(--dim);margin-bottom:3px}
+  .field input{width:100%;background:transparent;border:none;color:var(--ink);
+    font-family:var(--mono);font-size:1.2rem;font-weight:600;padding:0}
+  .field input:focus{outline:none}
+  .field:focus-within{border-color:var(--madder)}
+  input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  input[type=number]{-moz-appearance:textfield}
+
+  .result{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)}
+  .bignum{font-family:var(--mono);font-size:1.7rem;font-weight:700;color:var(--madder)}
+  .bignum small{font-size:.9rem;color:var(--dim);font-weight:600}
+  .resline{font-size:.85rem;color:var(--dim);margin-top:3px}
+  .resline b{color:var(--ink)}
+  .mirror{margin-top:10px;border:1px solid var(--weld);border-radius:10px;padding:9px 12px;
+    font-size:.85rem;color:var(--weld)}
+  .note{margin-top:8px;font-size:.76rem;color:var(--faint);font-style:italic;
+    font-family:var(--serif)}
+
+  .preview{margin-top:12px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:10px;padding:10px}
+  svg{display:block;width:100%;height:auto;max-height:420px;margin:0 auto}
+
+  /* batch */
+  .qtyrow{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:8px}
+  .qty{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:7px 9px}
+  .qty label{display:block;font-size:.64rem;font-weight:700;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--dim)}
+  .qty input{width:100%;background:transparent;border:none;color:var(--ink);
+    font-family:var(--mono);font-size:1.1rem;font-weight:600;padding:0}
+  .qty input:focus{outline:none}
+  .qty:focus-within{border-color:var(--madder)}
+
+  table{border-collapse:collapse;width:100%;margin-top:12px}
+  th,td{padding:7px 9px;border-bottom:1px solid var(--line);text-align:left;font-size:.84rem}
+  th{font-size:.62rem;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:var(--dim)}
+  td.n{font-family:var(--mono)}
+  tfoot td{color:var(--indigo);font-family:var(--mono);font-size:.8rem;border-bottom:none;padding-top:10px}
+
+  .rowbtns{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .btn{appearance:none;border:1px solid var(--line);background:var(--panel2);color:var(--ink);
+    border-radius:8px;padding:9px 14px;font-size:.84rem;font-weight:600;cursor:pointer}
+  .btn:active{background:var(--panel)}
+  .btn.primary{border-color:var(--madder);color:var(--madder)}
+  .btn:focus-visible{outline:2px solid var(--madder);outline-offset:2px}
+
+  footer{margin-top:28px;border-top:1px solid var(--line);padding-top:12px;
+    font-size:.75rem;color:var(--faint);line-height:1.65}
+  footer code{font-family:var(--mono)}
+
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(8px);
+    background:var(--panel2);border:1px solid var(--madder);color:var(--ink);border-radius:8px;
+    padding:8px 16px;font-size:.85rem;opacity:0;pointer-events:none;
+    transition:opacity .2s,transform .2s;max-width:90vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media (prefers-reduced-motion:reduce){.toast{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>HTV <span class="amp">&amp;</span> Placement</h1>
+    <span class="ver">vinyl sizing · v1.0.0 · offline</span>
+  </header>
+
+  <section aria-label="Garment and placement">
+    <h2>Size the decal</h2>
+    <p class="sub">Pick the blank, the size, and where the vinyl goes — the numbers feed straight into Design Space.</p>
+    <div class="card">
+      <div class="toolrow">
+        <select class="big" id="garSel" aria-label="Garment"></select>
+        <select class="big" id="sizeSel" aria-label="Size"></select>
+      </div>
+      <div class="toolrow">
+        <span class="seg" id="locSeg" role="group" aria-label="Placement"></span>
+      </div>
+      <div class="grid">
+        <div class="field"><label for="ratW">Design width (any unit)</label>
+          <input id="ratW" type="number" inputmode="decimal" step="0.01" placeholder="e.g. 3"></div>
+        <div class="field"><label for="ratH">Design height</label>
+          <input id="ratH" type="number" inputmode="decimal" step="0.01" placeholder="e.g. 2"></div>
+      </div>
+      <div class="result">
+        <span class="bignum" id="cutBig">—</span>
+        <div class="resline" id="cutLine"></div>
+        <div class="resline" id="placeLine"></div>
+        <div class="mirror">⚠ <b>Mirror before cutting.</b> HTV goes shiny side down on the mat.</div>
+        <div class="note" id="capNote"></div>
+      </div>
+      <div class="preview"><div id="svgbox"></div></div>
+    </div>
+  </section>
+
+  <section aria-label="Batch cut list">
+    <h2>Batch cut list</h2>
+    <p class="sub">Quantities per size for the current garment &amp; placement — with the same design ratio applied across the run.</p>
+    <div class="card">
+      <div class="qtyrow" id="qtyrow"></div>
+      <div id="batchout"></div>
+      <div class="rowbtns">
+        <button class="btn primary" id="copyList" type="button">Copy cut list</button>
+        <button class="btn" id="clearQty" type="button">Clear quantities</button>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Recommended widths and collar offsets are standard HTV placement-chart numbers —
+    tune them to house taste in the <code>GARMENTS</code> table at the top of the script.
+    Cut width is capped at <b>11.5″</b> (12″ roll / Cricut mat, minus margin).
+    The roll estimate packs each size in rows across a 12″ roll with ½″ gaps — buy that plus scrap insurance.
+    Selections persist in this browser (<code>localStorage</code>).
+  </footer>
+</div>
+
+<div class="toast" id="toast">Copied</div>
+
+<script>
+"use strict";
+/* ============ CONFIG — garment tables (widths/offsets in inches) ============ */
+const MAT_MAX = 11.5;   // usable cut width on a 12" roll / mat
+const GAP = 0.5;        // spacing between pieces when packing the roll
+
+function sz(label,W,L,fw,fdn,o){ // body W×L, front rec width, front collar offset
+  o=o||{};
+  const loc = {
+    front:{ w:fw, dn:fdn, maxH:o.fMaxH||14 },
+    back: { w:o.bw!==undefined?o.bw:fw, dn:o.bdn!==undefined?o.bdn:fdn+1, maxH:14 },
+  };
+  if(o.cw) loc.chest  = { w:o.cw, dn:o.cdn, maxH:Math.round(o.cw*1.1*100)/100 };
+  if(o.sw) loc.sleeve = { w:o.sw, dn:null,  maxH:o.sw };
+  return {label, W, L, loc};
+}
+const GARMENTS = [
+  { id:"adult", name:"Adult Tee", shape:"tee", sizes:[
+      sz("XS",16.5,27, 9,  3,  {cw:3.5,cdn:3,sw:3.5}),
+      sz("S", 18,  28, 9.5,3,  {cw:3.5,cdn:3,sw:3.5}),
+      sz("M", 20,  29, 10.5,3, {cw:3.5,cdn:3,sw:3.5}),
+      sz("L", 22,  30, 11, 3,  {cw:3.5,cdn:3,sw:3.5}),
+      sz("XL",24,  31, 11.5,3.5,{cw:3.5,cdn:3,sw:3.5}),
+      sz("2XL",26, 32, 12, 3.5,{cw:4,cdn:3,sw:3.5}),
+      sz("3XL",28, 33, 12.5,3.5,{cw:4,cdn:3,sw:3.5}),
+  ]},
+  { id:"youth", name:"Youth Tee", shape:"tee", sizes:[
+      sz("YXS",14,19,  6, 1.5,{cw:3,cdn:2.5,sw:2.5}),
+      sz("YS", 15,20.5,7, 2,  {cw:3,cdn:2.5,sw:2.5}),
+      sz("YM", 16,22,  7.5,2, {cw:3,cdn:2.5,sw:2.5}),
+      sz("YL", 17,23.5,8, 2.5,{cw:3,cdn:2.5,sw:2.5}),
+      sz("YXL",18,25,  9, 2.5,{cw:3,cdn:2.5,sw:2.5}),
+  ]},
+  { id:"toddler", name:"Toddler Tee", shape:"tee", sizes:[
+      sz("2T",12,15.5,5,  1.5,{cw:2.5,cdn:2,sw:2}),
+      sz("3T",13,16.5,5.5,1.5,{cw:2.5,cdn:2,sw:2}),
+      sz("4T",14,17.5,6,  1.5,{cw:2.5,cdn:2,sw:2}),
+      sz("5T",15,18.5,6,  1.5,{cw:2.5,cdn:2,sw:2}),
+  ]},
+  { id:"onesie", name:"Onesie", shape:"onesie", sizes:[
+      sz("0-3M", 7.5,11,4,  1,{bdn:1.5}),
+      sz("3-6M", 8,  12,4.5,1,{bdn:1.5}),
+      sz("6-12M",8.5,13,5,  1,{bdn:1.5}),
+      sz("12-18M",9, 14,5.5,1,{bdn:1.5}),
+      sz("18-24M",9.5,15,6, 1,{bdn:1.5}),
+  ]},
+  { id:"hoodie", name:"Adult Hoodie", shape:"hoodie", sizes:[
+      sz("S", 20,27,9.5, 3.5,{fMaxH:10,bdn:4,cw:3.5,cdn:3.5,sw:3.5}),
+      sz("M", 22,28,10,  3.5,{fMaxH:10,bdn:4,cw:3.5,cdn:3.5,sw:3.5}),
+      sz("L", 24,29,10.5,3.5,{fMaxH:10,bdn:4,cw:3.5,cdn:3.5,sw:3.5}),
+      sz("XL",26,30,11,  3.5,{fMaxH:10,bdn:4,cw:3.5,cdn:3.5,sw:3.5}),
+      sz("2XL",28,31,11.5,3.5,{fMaxH:10,bdn:4,cw:4,cdn:3.5,sw:3.5}),
+  ]},
+  { id:"tote", name:"Tote Bag", shape:"tote", sizes:[
+      sz("Standard 15×16",15,16,9,4.5,{bdn:4.5}),
+  ]},
+];
+const LOC_META = {
+  front:{ name:"Full front", place:(dn)=>`top edge <b>${dn}″ below the collar seam</b>, centered` },
+  chest:{ name:"Left chest", place:(dn)=>`top edge <b>${dn}″ below the collar</b>, centered over the wearer's left chest (viewer's right)` },
+  back: { name:"Full back",  place:(dn)=>`top edge <b>${dn}″ below the back collar seam</b>, centered` },
+  sleeve:{name:"Sleeve",     place:()=>`centered on the sleeve, ~1″ below the shoulder seam` },
+};
+const LS_KEY = "htvplacement.v1";
+
+/* ================= state ================= */
+let S = load();
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw){ const p = JSON.parse(raw); if(p && p.qty) return p; }
+  }catch(e){}
+  return { gar:"adult", size:"M", loc:"front", ratW:"", ratH:"", qty:{} };
+}
+function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){} }
+const $   = id => document.getElementById(id);
+const num = v => { const n=parseFloat(v); return Number.isFinite(n)&&n>0 ? n : null; };
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const r2  = x => Math.round(x*100)/100;
+const gar = () => GARMENTS.find(g=>g.id===S.gar) || GARMENTS[0];
+const size= () => gar().sizes.find(s=>s.label===S.size) || gar().sizes[0];
+
+/* ================= core math ================= */
+function ratio(){
+  const w=num(S.ratW), h=num(S.ratH);
+  return (w&&h) ? w/h : null;
+}
+function cutDims(loc, rat){
+  let w = Math.min(loc.w, MAT_MAX);
+  const capped = loc.w > MAT_MAX;
+  if(!rat) return { w:r2(w), h:null, capped };
+  let h = w/rat;
+  let hCapped=false;
+  if(loc.maxH && h > loc.maxH){ h=loc.maxH; w=h*rat; hCapped=true; }
+  return { w:r2(w), h:r2(h), capped, hCapped };
+}
+function rollLength(items){ // [{w,h,qty}] -> inches of 12" roll
+  let len=0;
+  for(const it of items){
+    if(!it.qty || !it.h) continue;
+    const perRow=Math.max(1, Math.floor((MAT_MAX+GAP)/(it.w+GAP)));
+    len += Math.ceil(it.qty/perRow)*(it.h+GAP);
+  }
+  return len;
+}
+
+/* ================= placement diagram (SVG) ================= */
+function drawSVG(){
+  const g=gar(), s=size(), locKey=S.loc, loc=s.loc[locKey];
+  if(!loc){ $("svgbox").innerHTML=""; return; }
+  const rat=ratio(), d=cutDims(loc,rat);
+  const dh = d.h!=null ? d.h : Math.min(loc.maxH, d.w*0.75); // draw-height when no ratio
+  const W=s.W, L=s.L, arm=g.shape==="tote"?0:W*0.24, pad=2.2;
+  const vbW=W+2*arm+2*pad, vbH=L+2*pad+1.5;
+  const P=[]; const X=x=>x+vbW/2; const Y=y=>y+pad+1;
+  const line=(x1,y1,x2,y2,st)=>P.push('<line x1="'+X(x1)+'" y1="'+Y(y1)+'" x2="'+X(x2)+'" y2="'+Y(y2)+'" '+st+'/>');
+  const seam='stroke="var(--faint)" stroke-width="0.14" stroke-dasharray="0.4 0.3" fill="none"';
+  const body='stroke="var(--dim)" stroke-width="0.22" fill="none" stroke-linejoin="round"';
+  const isBack = locKey==="back";
+  const nd = isBack ? 0.6 : (g.shape==="hoodie" ? 1.6 : 1.3);   // collar dip
+  const nk = W*0.17;
+
+  if(g.shape==="tote"){
+    P.push('<rect x="'+X(-W/2)+'" y="'+Y(0)+'" width="'+W+'" height="'+L+'" rx="0.4" '+body+'/>');
+    P.push('<path d="M '+X(-W*0.28)+' '+Y(0)+' C '+X(-W*0.28)+' '+Y(-2.6)+' '+X(-W*0.02)+' '+Y(-2.6)+' '+X(-W*0.02)+' '+Y(0)+'" '+body+'/>');
+    P.push('<path d="M '+X(W*0.02)+' '+Y(0)+' C '+X(W*0.02)+' '+Y(-2.6)+' '+X(W*0.28)+' '+Y(-2.6)+' '+X(W*0.28)+' '+Y(0)+'" '+body+'/>');
+  } else {
+    const shd=0.8, aE=arm, aS=W*0.15, cf=W*0.10, uy=shd+aS+cf*0.7;
+    let hemPath;
+    if(g.shape==="onesie"){
+      hemPath = 'L '+X(W/2)+' '+Y(L-2.5)+' Q '+X(W/2)+' '+Y(L)+' '+X(W*0.28)+' '+Y(L)+
+                ' L '+X(-W*0.28)+' '+Y(L)+' Q '+X(-W/2)+' '+Y(L)+' '+X(-W/2)+' '+Y(L-2.5);
+    } else {
+      hemPath = 'L '+X(W/2)+' '+Y(L)+' L '+X(-W/2)+' '+Y(L);
+    }
+    P.push('<path d="M '+X(-nk)+' '+Y(0)+
+      ' L '+X(-W/2)+' '+Y(shd)+
+      ' L '+X(-W/2-aE)+' '+Y(shd+aS)+
+      ' L '+X(-W/2-aE+cf*0.5)+' '+Y(shd+aS+cf)+
+      ' L '+X(-W/2)+' '+Y(uy)+
+      ' L '+X(-W/2)+' '+Y(g.shape==="onesie"?L-2.5:L)+
+      ' M '+X(nk)+' '+Y(0)+
+      ' L '+X(W/2)+' '+Y(shd)+
+      ' L '+X(W/2+aE)+' '+Y(shd+aS)+
+      ' L '+X(W/2+aE-cf*0.5)+' '+Y(shd+aS+cf)+
+      ' L '+X(W/2)+' '+Y(uy)+
+      ' L '+X(W/2)+' '+Y(g.shape==="onesie"?L-2.5:L)+'" '+body+'/>');
+    P.push('<path d="M '+X(-W*0.28)+' '+Y(L)+' L '+X(W*0.28)+' '+Y(L)+'" '+(g.shape==="onesie"?seam:body)+'/>');
+    if(g.shape==="onesie"){
+      P.push('<path d="M '+X(-W*0.28)+' '+Y(L)+' Q '+X(-W/2)+' '+Y(L)+' '+X(-W/2)+' '+Y(L-2.5)+'" '+body+'/>');
+      P.push('<path d="M '+X(W*0.28)+' '+Y(L)+' Q '+X(W/2)+' '+Y(L)+' '+X(W/2)+' '+Y(L-2.5)+'" '+body+'/>');
+    }
+    // collar
+    P.push('<path d="M '+X(-nk)+' '+Y(0)+' Q '+X(0)+' '+Y(nd*2)+' '+X(nk)+' '+Y(0)+'" '+body+'/>');
+    P.push('<path d="M '+X(-nk)+' '+Y(0)+' Q '+X(0)+' '+Y(-0.7)+' '+X(nk)+' '+Y(0)+'" '+seam+'/>');
+    // underarm seams
+    line(-W/2, uy, -W/2, g.shape==="onesie"?L-2.5:L, seam);
+    line( W/2, uy,  W/2, g.shape==="onesie"?L-2.5:L, seam);
+    if(g.shape==="hoodie" && !isBack){
+      const pw=W*0.5, pt=L-8.5, pb=L-1.5;
+      P.push('<path d="M '+X(-pw/2)+' '+Y(pt)+' L '+X(pw/2)+' '+Y(pt)+' L '+X(pw/2*0.8)+' '+Y(pb)+' L '+X(-pw/2*0.8)+' '+Y(pb)+' Z" '+seam+'/>');
+      line(-nk*0.4, nd*1.6, -nk*0.4, nd*1.6+3.2, seam);
+      line( nk*0.4, nd*1.6,  nk*0.4, nd*1.6+3.2, seam);
+    }
+  }
+
+  // decal rect + annotations
+  const topRef = g.shape==="tote" ? 0 : nd;
+  let dx, dy;
+  if(locKey==="sleeve"){
+    dx = -W/2-arm*0.55 - d.w/2; dy = 1.6;
+    P.push('<g transform="rotate(-28 '+X(dx+d.w/2)+' '+Y(dy+dh/2)+')">'+
+      '<rect x="'+X(dx)+'" y="'+Y(dy)+'" width="'+d.w+'" height="'+dh+'" fill="var(--madder)" fill-opacity="0.28" stroke="var(--madder)" stroke-width="0.18"/></g>');
+  } else {
+    dx = locKey==="chest" ? W*0.25 - d.w/2 : -d.w/2;
+    dy = topRef + loc.dn;
+    P.push('<rect x="'+X(dx)+'" y="'+Y(dy)+'" width="'+d.w+'" height="'+dh+'" fill="var(--madder)" fill-opacity="0.28" stroke="var(--madder)" stroke-width="0.18"/>');
+    // width dimension
+    const wy=dy+dh+0.9;
+    line(dx, wy, dx+d.w, wy, 'stroke="var(--indigo)" stroke-width="0.12"');
+    line(dx, wy-0.35, dx, wy+0.35, 'stroke="var(--indigo)" stroke-width="0.12"');
+    line(dx+d.w, wy-0.35, dx+d.w, wy+0.35, 'stroke="var(--indigo)" stroke-width="0.12"');
+    P.push('<text x="'+X(dx+d.w/2)+'" y="'+Y(wy+1.15)+'" fill="var(--indigo)" font-size="1.05" text-anchor="middle" style="font-family:var(--mono)">'+d.w+'″'+(d.h!=null?' × '+d.h+'″':'')+'</text>');
+    // collar offset dimension
+    const ox = dx+d.w+1.0;
+    line(ox, topRef, ox, dy, 'stroke="var(--weld)" stroke-width="0.12"');
+    line(ox-0.35, topRef, ox+0.35, topRef, 'stroke="var(--weld)" stroke-width="0.12"');
+    line(ox-0.35, dy, ox+0.35, dy, 'stroke="var(--weld)" stroke-width="0.12"');
+    P.push('<text x="'+X(ox+0.5)+'" y="'+Y(topRef+(dy-topRef)/2+0.35)+'" fill="var(--weld)" font-size="1.0" style="font-family:var(--mono)">'+loc.dn+'″</text>');
+    if(locKey==="chest") line(0, topRef, 0, L*0.5, seam); // centerline reference
+  }
+  $("svgbox").innerHTML =
+    '<svg viewBox="0 0 '+vbW+' '+vbH+'" role="img" aria-label="Placement diagram">'+P.join("")+'</svg>';
+}
+
+/* ================= render ================= */
+function renderSelectors(){
+  $("garSel").innerHTML = GARMENTS.map(g=>
+    '<option value="'+g.id+'"'+(g.id===S.gar?" selected":"")+'>'+esc(g.name)+'</option>').join("");
+  const gg=gar();
+  if(!gg.sizes.some(x=>x.label===S.size)) S.size=gg.sizes[Math.floor(gg.sizes.length/2)].label;
+  $("sizeSel").innerHTML = gg.sizes.map(s=>
+    '<option value="'+esc(s.label)+'"'+(s.label===S.size?" selected":"")+'>'+esc(s.label)+' · '+s.W+'×'+s.L+'″</option>').join("");
+  const locs=Object.keys(LOC_META);
+  const avail=size().loc;
+  if(!avail[S.loc]) S.loc="front";
+  $("locSeg").innerHTML = locs.map(k=>
+    '<button type="button" data-loc="'+k+'" aria-pressed="'+(k===S.loc)+'"'+(avail[k]?"":" disabled")+'>'+LOC_META[k].name+'</button>').join("");
+}
+function renderResult(){
+  const s=size(), loc=s.loc[S.loc];
+  if(!loc) return;
+  const rat=ratio(), d=cutDims(loc,rat);
+  $("cutBig").innerHTML = d.h!=null
+    ? d.w+'″ × '+d.h+'″ <small>cut size</small>'
+    : d.w+'″ <small>wide (enter design W&H for height)</small>';
+  $("cutLine").innerHTML = 'recommended max width for '+esc(gar().name)+' '+esc(s.label)+': <b>'+loc.w+'″</b>'+(loc.maxH<14?' · max height <b>'+loc.maxH+'″</b>':'');
+  $("placeLine").innerHTML = LOC_META[S.loc].place(loc.dn);
+  const notes=[];
+  if(d.capped) notes.push('Width capped at '+MAT_MAX+'″ by the 12″ roll/mat.');
+  if(d.hCapped) notes.push('Height-limited placement — width reduced to keep the design proportional.');
+  if(gar().id==="hoodie" && S.loc==="front") notes.push('Hoodie fronts are height-limited by the kangaroo pocket.');
+  $("capNote").textContent = notes.join(" ");
+  drawSVG();
+}
+function renderBatch(){
+  const g=gar(), q=S.qty[g.id]||{};
+  $("qtyrow").innerHTML = g.sizes.map(s=>
+    '<div class="qty"><label>'+esc(s.label)+'</label><input type="number" inputmode="numeric" min="0" step="1" data-qs="'+esc(s.label)+'" value="'+(q[s.label]||"")+'" placeholder="0"></div>').join("");
+  renderBatchTable();
+}
+function batchItems(){
+  const g=gar(), q=S.qty[g.id]||{}, rat=ratio(), rows=[];
+  for(const s of g.sizes){
+    const n=parseInt(q[s.label],10);
+    if(!n || n<1) continue;
+    const loc=s.loc[S.loc]; if(!loc) continue;
+    const d=cutDims(loc,rat);
+    rows.push({label:s.label, qty:n, w:d.w, h:d.h});
+  }
+  return rows;
+}
+function renderBatchTable(){
+  const rows=batchItems();
+  if(!rows.length){ $("batchout").innerHTML='<div class="note">Enter quantities above to build the run.</div>'; return; }
+  const total=rows.reduce((a,r)=>a+r.qty,0);
+  const roll=rollLength(rows);
+  const rollTxt = rows.every(r=>r.h!=null)
+    ? '≈ '+Math.ceil(roll)+'″ of 12″ roll ('+(Math.round(roll/12*10)/10)+' ft) incl. ½″ gaps'
+    : 'enter design W&H for a roll estimate';
+  $("batchout").innerHTML = '<table><thead><tr><th>Size</th><th>Qty</th><th>Cut W × H</th></tr></thead><tbody>'+
+    rows.map(r=>'<tr><td>'+esc(r.label)+'</td><td class="n">'+r.qty+'</td><td class="n">'+r.w+'″ × '+(r.h!=null?r.h+'″':'—')+'</td></tr>').join("")+
+    '</tbody><tfoot><tr><td class="n">'+total+' pieces</td><td colspan="2">'+rollTxt+'</td></tr></tfoot></table>';
+}
+
+/* ================= copy / toast ================= */
+function toast(msg){
+  const t=$("toast"); t.textContent=msg;
+  t.classList.add("show"); clearTimeout(toast._t);
+  toast._t=setTimeout(()=>t.classList.remove("show"),1900);
+}
+function copyText(text,okMsg){
+  const done=ok=>toast(ok?okMsg:"Copy failed — long-press to select");
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(()=>done(true)).catch(()=>fallbackCopy(text,done));
+  } else fallbackCopy(text,done);
+}
+function fallbackCopy(text,done){
+  const ta=document.createElement("textarea");
+  ta.value=text; ta.style.position="fixed"; ta.style.opacity="0";
+  document.body.appendChild(ta); ta.select();
+  let ok=false; try{ ok=document.execCommand("copy"); }catch(e){}
+  document.body.removeChild(ta); done(ok);
+}
+function listText(){
+  const rows=batchItems();
+  if(!rows.length) return "";
+  const rat=ratio();
+  const hdr='CUT LIST — '+gar().name+' · '+LOC_META[S.loc].name+(rat?' — design ratio '+S.ratW+':'+S.ratH:'');
+  const lines=rows.map(r=>r.label+' ×'+r.qty+' — '+r.w+'″ × '+(r.h!=null?r.h+'″':'height TBD'));
+  const roll=rollLength(rows);
+  const tail=rows.every(r=>r.h!=null)?'12″ roll ≈ '+Math.ceil(roll)+'″ ('+(Math.round(roll/12*10)/10)+' ft) incl. gaps':'';
+  return [hdr,...lines,tail,'MIRROR the design before cutting.'].filter(Boolean).join('\n');
+}
+
+/* ================= events ================= */
+$("garSel").addEventListener("change", e=>{
+  S.gar=e.target.value; save(); renderSelectors(); renderResult(); renderBatch();
+});
+$("sizeSel").addEventListener("change", e=>{
+  S.size=e.target.value; save(); renderSelectors(); renderResult();
+});
+$("locSeg").addEventListener("click", e=>{
+  const b=e.target.closest("[data-loc]"); if(!b||b.disabled) return;
+  S.loc=b.dataset.loc; save(); renderSelectors(); renderResult(); renderBatchTable();
+});
+["ratW","ratH"].forEach(id=>$(id).addEventListener("input", e=>{
+  S[id]=e.target.value; save(); renderResult(); renderBatchTable();
+}));
+$("qtyrow").addEventListener("input", e=>{
+  const s=e.target.dataset.qs; if(!s) return;
+  if(!S.qty[gar().id]) S.qty[gar().id]={};
+  S.qty[gar().id][s]=e.target.value;
+  save(); renderBatchTable();
+});
+$("copyList").addEventListener("click", ()=>{
+  const t=listText();
+  if(!t){ toast("Enter quantities first"); return; }
+  copyText(t,"Cut list copied");
+});
+$("clearQty").addEventListener("click", ()=>{
+  S.qty[gar().id]={}; save(); renderBatch();
+});
+
+/* ================= init ================= */
+$("ratW").value=S.ratW; $("ratH").value=S.ratH;
+renderSelectors(); renderResult(); renderBatch();
+</script>
+</body>
+</html>

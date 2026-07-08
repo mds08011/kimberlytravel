@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<!--
+  SKEIN MATH — Yarn Sufficiency & Gauge Conversion
+  v1.0.0 · 2026-07-07
+  First tool of the fiber-arts suite. Single-file, offline, zero dependencies.
+  Panel A: kitchen-scale yardage — do I have enough to finish?
+  Panel B: gauge conversion — pattern gauge vs. my swatch, with repeat rounding.
+  Yarn stash (ball-band data) persists in localStorage.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1b1512">
+<title>Skein Math — Yarn & Gauge</title>
+<style>
+  :root{
+    --bg:#1b1512;          /* dark walnut, lamplight craft room */
+    --panel:#241c17;
+    --panel2:#2d231c;
+    --line:#3e3128;
+    --ink:#f0e7dc;         /* unbleached wool */
+    --dim:#b3a494;
+    --faint:#7d7062;
+    --madder:#e08484;      /* madder rose — primary / short */
+    --indigo:#8fa8dc;      /* soft indigo — data / have */
+    --weld:#d9a441;        /* goldenrod — caution / close */
+    --leaf:#8fbf96;        /* enough */
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --serif:"Iowan Old Style",Palatino,"Palatino Linotype",Georgia,serif;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;
+    line-height:1.5;padding:0 14px calc(28px + env(safe-area-inset-bottom))}
+  .wrap{max-width:680px;margin:0 auto}
+
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+    padding:20px 2px 14px;border-bottom:1px solid var(--line)}
+  h1{font-family:var(--serif);font-size:1.45rem;font-weight:600;font-style:italic;
+    letter-spacing:.01em}
+  h1 .amp{color:var(--madder);font-style:italic}
+  header .ver{font-family:var(--mono);font-size:.7rem;color:var(--faint)}
+
+  section{margin-top:22px}
+  h2{font-family:var(--serif);font-size:1.08rem;font-weight:600;font-style:italic;
+    color:var(--ink);display:flex;align-items:center;gap:10px;margin-bottom:4px}
+  h2::after{content:"";flex:1;height:1px;background:var(--line)}
+  .sub{font-size:.8rem;color:var(--dim);margin-bottom:12px}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .grid.two{grid-template-columns:1fr 1fr}
+  @media(max-width:430px){.grid{grid-template-columns:repeat(2,1fr)}}
+  .field{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+  .field label{display:block;font-size:.64rem;font-weight:700;letter-spacing:.13em;
+    text-transform:uppercase;color:var(--dim);margin-bottom:3px;font-family:var(--sans)}
+  .field input,.field select{width:100%;background:transparent;border:none;color:var(--ink);
+    font-family:var(--mono);font-size:1.2rem;font-weight:600;padding:0;color-scheme:dark}
+  .field input:focus,.field select:focus{outline:none}
+  .field:focus-within{border-color:var(--madder)}
+  .field select{appearance:none;font-size:.95rem;padding:3px 0}
+  input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  input[type=number]{-moz-appearance:textfield}
+
+  /* unit + stash rows */
+  .toolrow{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{appearance:none;border:none;background:var(--panel2);color:var(--dim);
+    padding:7px 13px;font-size:.8rem;font-weight:700;cursor:pointer}
+  .seg button[aria-pressed="true"]{background:var(--madder);color:#2a1414}
+  .seg button:focus-visible{outline:2px solid var(--madder);outline-offset:-2px}
+  .stashsel{flex:1;min-width:150px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:8px;color:var(--ink);font-size:.85rem;padding:8px 10px;appearance:none}
+  .btn{appearance:none;border:1px solid var(--line);background:var(--panel2);color:var(--ink);
+    border-radius:8px;padding:8px 13px;font-size:.82rem;font-weight:600;cursor:pointer}
+  .btn:active{background:var(--panel)}
+  .btn:focus-visible{outline:2px solid var(--madder);outline-offset:2px}
+
+  /* result blocks */
+  .result{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)}
+  .bignum{font-family:var(--mono);font-size:1.8rem;font-weight:700;color:var(--indigo)}
+  .bignum small{font-size:.95rem;color:var(--dim);font-weight:600}
+  .resline{font-size:.85rem;color:var(--dim);margin-top:2px}
+  .resline b{color:var(--ink)}
+
+  /* the strand bars (signature) */
+  .strands{margin-top:12px}
+  .strand{position:relative;height:22px;border-radius:11px;background:var(--panel2);
+    border:1px solid var(--line);overflow:hidden;margin-top:8px}
+  .strand .fill{position:absolute;inset:0;width:0%;border-radius:11px;
+    transition:width .35s ease}
+  .strand.have .fill{background:
+    repeating-linear-gradient(115deg,var(--indigo) 0 7px,#7591c9 7px 14px)}
+  .strand.need .fill{background:
+    repeating-linear-gradient(115deg,var(--madder) 0 7px,#c96f6f 7px 14px)}
+  .strand .tag{position:absolute;left:10px;top:50%;transform:translateY(-50%);
+    font-size:.62rem;font-weight:800;letter-spacing:.13em;text-transform:uppercase;
+    color:rgba(20,12,8,.85);mix-blend-mode:normal;z-index:2}
+  .strand .val{position:absolute;right:10px;top:50%;transform:translateY(-50%);
+    font-family:var(--mono);font-size:.75rem;color:var(--ink);z-index:2;
+    text-shadow:0 0 4px rgba(0,0,0,.6)}
+  @media (prefers-reduced-motion:reduce){.strand .fill{transition:none}}
+
+  .verdict{margin-top:12px;border-radius:10px;padding:10px 12px;font-size:.9rem;
+    border:1px solid var(--line);background:var(--panel2)}
+  .verdict.ok{border-color:var(--leaf);color:var(--leaf)}
+  .verdict.close{border-color:var(--weld);color:var(--weld)}
+  .verdict.short{border-color:var(--madder);color:var(--madder)}
+  .verdict b{font-family:var(--mono)}
+
+  .note{margin-top:8px;font-size:.76rem;color:var(--faint);font-style:italic;
+    font-family:var(--serif)}
+
+  footer{margin-top:28px;border-top:1px solid var(--line);padding-top:12px;
+    font-size:.75rem;color:var(--faint);line-height:1.65}
+  footer code{font-family:var(--mono)}
+
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(8px);
+    background:var(--panel2);border:1px solid var(--madder);color:var(--ink);border-radius:8px;
+    padding:8px 16px;font-size:.85rem;opacity:0;pointer-events:none;
+    transition:opacity .2s,transform .2s;max-width:90vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media (prefers-reduced-motion:reduce){.toast{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Skein <span class="amp">&amp;</span> Gauge</h1>
+    <span class="ver">skein math · v1.0.0 · offline</span>
+  </header>
+
+  <section aria-label="Yarn sufficiency">
+    <h2>Do I have enough?</h2>
+    <p class="sub">Weigh the working skein on the kitchen scale — yardage follows from the ball band.</p>
+    <div class="card">
+      <div class="toolrow">
+        <span class="seg" role="group" aria-label="Length unit">
+          <button type="button" data-unit="yd" aria-pressed="true">yd</button>
+          <button type="button" data-unit="m" aria-pressed="false">m</button>
+        </span>
+        <select class="stashsel" id="stashSel" aria-label="Saved yarns">
+          <option value="">— saved yarns —</option>
+        </select>
+        <button class="btn" id="stashSave" type="button">Save yarn</button>
+        <button class="btn" id="stashDel" type="button">Delete</button>
+      </div>
+      <div class="grid">
+        <div class="field"><label for="ballG">Ball band g</label>
+          <input id="ballG" type="number" inputmode="decimal" step="1" placeholder="100"></div>
+        <div class="field"><label for="ballY" id="ballYLabel">Ball band yd</label>
+          <input id="ballY" type="number" inputmode="decimal" step="1" placeholder="220"></div>
+        <div class="field"><label for="curG">Partial weighs g</label>
+          <input id="curG" type="number" inputmode="decimal" step="0.1" placeholder="63"></div>
+        <div class="field"><label for="fullSk">Full skeins</label>
+          <input id="fullSk" type="number" inputmode="numeric" step="1" placeholder="0"></div>
+        <div class="field"><label for="needY" id="needYLabel">Pattern needs yd</label>
+          <input id="needY" type="number" inputmode="decimal" step="1" placeholder="—"></div>
+      </div>
+      <div class="result" id="yarnResult" hidden>
+        <span class="bignum" id="remBig">—</span>
+        <div class="resline" id="remLine"></div>
+        <div class="strands" id="strands" hidden>
+          <div class="strand have"><div class="fill" id="haveFill"></div>
+            <span class="tag">have</span><span class="val" id="haveVal"></span></div>
+          <div class="strand need"><div class="fill" id="needFill"></div>
+            <span class="tag">need</span><span class="val" id="needVal"></span></div>
+        </div>
+        <div class="verdict" id="verdict" hidden></div>
+        <div class="note" id="yarnNote"></div>
+      </div>
+    </div>
+  </section>
+
+  <section aria-label="Gauge conversion">
+    <h2>Gauge conversion</h2>
+    <p class="sub">Pattern gauge vs. your swatch — what the numbers become, and what actually fits.</p>
+    <div class="card">
+      <div class="toolrow">
+        <span class="seg" role="group" aria-label="Gauge basis">
+          <button type="button" data-basis="4" aria-pressed="true">per 4 in</button>
+          <button type="button" data-basis="10" aria-pressed="false">per 10 cm</button>
+        </span>
+      </div>
+      <div class="grid">
+        <div class="field"><label for="patSt" id="patStLabel">Pattern sts / 4 in</label>
+          <input id="patSt" type="number" inputmode="decimal" step="0.5" placeholder="18"></div>
+        <div class="field"><label for="mySt" id="myStLabel">My sts / 4 in</label>
+          <input id="mySt" type="number" inputmode="decimal" step="0.5" placeholder="20"></div>
+        <div class="field"><label for="patCount">Pattern count</label>
+          <input id="patCount" type="number" inputmode="numeric" step="1" placeholder="90"></div>
+        <div class="field"><label for="repMult">Repeat: multiple of</label>
+          <input id="repMult" type="number" inputmode="numeric" step="1" placeholder="1"></div>
+        <div class="field"><label for="repPlus">Repeat: plus</label>
+          <input id="repPlus" type="number" inputmode="numeric" step="1" placeholder="0"></div>
+      </div>
+      <div class="result" id="gaugeResult" hidden>
+        <span class="bignum" id="adjBig" style="color:var(--madder)">—</span>
+        <div class="resline" id="adjLine"></div>
+        <div class="resline" id="dimLine"></div>
+        <div class="resline" id="driftLine"></div>
+        <div class="note" id="gaugeNote"></div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Yardage from weight assumes even winding: <code>remaining = (grams left ÷ ball grams) × ball length</code>.
+    The verdict wants a ≥10% margin — seams, swatches, and one frogged section eat yarn.
+    Gauge math is proportional: <code>your count = pattern count × (your gauge ÷ pattern gauge)</code>,
+    then rounded to your stitch repeat if you set one. Same rule works for rows.
+    Saved yarns live in this browser only (<code>localStorage</code>).
+  </footer>
+</div>
+
+<div class="toast" id="toast">Saved</div>
+
+<script>
+"use strict";
+const LS_KEY = "skeinmath.v1";
+const YD_PER_M = 1.0936133;
+
+/* ================= state ================= */
+let S = load();
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw){ const p = JSON.parse(raw); if(p && p.stash) return p; }
+  }catch(e){}
+  return { unit:"yd", basis:4, stash:{}, last:{} };  // stash: name -> {g, len, unit}
+}
+function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){} }
+const $   = id => document.getElementById(id);
+const num = v => { const n=parseFloat(v); return Number.isFinite(n)&&n>=0 ? n : null; };
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const r1  = x => Math.round(x*10)/10;
+
+/* ================= math ================= */
+function remainingLen(ballG, ballLen, curG, fullSk){
+  return (fullSk||0)*ballLen + (curG!=null && ballG>0 ? curG/ballG*ballLen : 0);
+}
+function roundToRepeat(target, mult, plus){
+  mult = mult||1; plus = plus||0;
+  if(mult<=1) return Math.round(target);
+  const base = Math.round((target-plus)/mult);
+  const cands = [base-1, base, base+1].map(k=>k*mult+plus).filter(n=>n>0);
+  return cands.reduce((a,b)=>Math.abs(b-target)<Math.abs(a-target)?b:a);
+}
+
+/* ================= panel A: sufficiency ================= */
+function calcYarn(){
+  const ballG=num($("ballG").value), ballY=num($("ballY").value);
+  const curG=num($("curG").value), fullSk=num($("fullSk").value), need=num($("needY").value);
+  const u=S.unit;
+  const show = ballG!=null && ballG>0 && ballY!=null && ballY>0 && (curG!=null || (fullSk!=null&&fullSk>0));
+  $("yarnResult").hidden = !show;
+  if(!show) return;
+
+  const rem = remainingLen(ballG, ballY, curG, fullSk);
+  $("remBig").innerHTML = `${r1(rem)} <small>${u} on hand</small>`;
+  const parts=[];
+  if(curG!=null && ballG>0) parts.push(`partial ≈ <b>${r1(curG/ballG*ballY)} ${u}</b> (${Math.round(curG/ballG*100)}% of a ball)`);
+  if(fullSk) parts.push(`+ ${fullSk} full skein${fullSk>1?"s":""} = <b>${r1(fullSk*ballY)} ${u}</b>`);
+  $("remLine").innerHTML = parts.join(" · ");
+  $("yarnNote").textContent = curG!=null && ballG>0 && curG>ballG && !fullSk
+    ? "Partial weighs more than a full ball — is a needle or bag on the scale?" : "";
+
+  const v=$("verdict"), st=$("strands");
+  if(need==null || need<=0){ v.hidden=true; st.hidden=true; return; }
+  st.hidden=false; v.hidden=false;
+  const scale = Math.max(rem, need)*1.06;
+  $("haveFill").style.width = Math.min(100, rem/scale*100)+"%";
+  $("needFill").style.width = Math.min(100, need/scale*100)+"%";
+  $("haveVal").textContent = r1(rem)+" "+u;
+  $("needVal").textContent = r1(need)+" "+u;
+  const margin = rem-need;
+  if(rem >= need*1.1){
+    v.className="verdict ok";
+    v.innerHTML=`Enough — <b>${r1(margin)} ${u}</b> to spare (${Math.round(margin/need*100)}% margin).`;
+  } else if(rem >= need){
+    v.className="verdict close";
+    v.innerHTML=`Cutting it close — only <b>${r1(margin)} ${u}</b> over (&lt;10% margin). Swatch from the working ball, not a fresh one.`;
+  } else {
+    v.className="verdict short";
+    v.innerHTML=`Short by <b>${r1(need-rem)} ${u}</b> (≈ ${Math.ceil((need-rem)/ballY*10)/10} balls). Hunt the dye lot now, or plan a contrast stripe where it won't look like an accident.`;
+  }
+}
+
+/* ================= panel B: gauge ================= */
+function calcGauge(){
+  const pat=num($("patSt").value), mine=num($("mySt").value);
+  const cnt=num($("patCount").value);
+  const mult=num($("repMult").value), plus=num($("repPlus").value);
+  const basis=S.basis, unitName = basis===4 ? "in" : "cm";
+  const show = pat!=null && pat>0 && mine!=null && mine>0;
+  $("gaugeResult").hidden = !show;
+  if(!show) return;
+
+  const ratio = mine/pat;
+  if(cnt!=null && cnt>0){
+    const raw = cnt*ratio;
+    const adj = roundToRepeat(raw, mult||1, plus||0);
+    $("adjBig").innerHTML = `${adj} <small>sts (was ${cnt})</small>`;
+    $("adjLine").innerHTML = `exact ${r1(raw)}${(mult&&mult>1)?`, rounded to multiple of ${mult}${plus?` + ${plus}`:""}`:""}`;
+    const intended = cnt/(pat/basis);
+    const asWritten = cnt/(mine/basis);
+    const adjusted = adj/(mine/basis);
+    $("dimLine").innerHTML =
+      `pattern intends <b>${r1(intended)} ${unitName}</b> · your ${adj} sts gives <b>${r1(adjusted)} ${unitName}</b>`;
+    $("driftLine").innerHTML =
+      `knitting the pattern's ${cnt} sts unchanged at your gauge → <b>${r1(asWritten)} ${unitName}</b> (${asWritten<intended?"smaller":"bigger"} by ${r1(Math.abs(intended-asWritten))} ${unitName})`;
+  } else {
+    $("adjBig").innerHTML = `×&thinsp;${r1(ratio*100)/100? (Math.round(ratio*1000)/1000):""}<small> multiplier</small>`;
+    $("adjLine").innerHTML = `multiply every stitch count by <b>${Math.round(ratio*1000)/1000}</b>`;
+    $("dimLine").textContent=""; $("driftLine").textContent="";
+  }
+  $("gaugeNote").textContent = Math.abs(ratio-1)>0.15
+    ? "Gauge differs by more than 15% — row counts, shaping intervals, and yardage all shift too. Convert rows the same way."
+    : "Row counts convert with the same ratio if your row gauge also differs.";
+}
+
+/* ================= units & stash ================= */
+function setUnit(u){
+  S.unit=u; save();
+  $("ballYLabel").textContent = "Ball band "+u;
+  $("needYLabel").textContent = "Pattern needs "+u;
+  document.querySelectorAll("[data-unit]").forEach(b=>b.setAttribute("aria-pressed", b.dataset.unit===u));
+  calcYarn();
+}
+function setBasis(b){
+  S.basis=b; save();
+  $("patStLabel").textContent = `Pattern sts / ${b===4?"4 in":"10 cm"}`;
+  $("myStLabel").textContent  = `My sts / ${b===4?"4 in":"10 cm"}`;
+  document.querySelectorAll("[data-basis]").forEach(x=>x.setAttribute("aria-pressed", +x.dataset.basis===b));
+  calcGauge();
+}
+function renderStash(){
+  const names=Object.keys(S.stash).sort((a,b)=>a.localeCompare(b));
+  $("stashSel").innerHTML = `<option value="">— saved yarns —</option>` +
+    names.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join("");
+}
+function toast(msg){
+  const t=$("toast"); t.textContent=msg;
+  t.classList.add("show"); clearTimeout(toast._t);
+  toast._t=setTimeout(()=>t.classList.remove("show"),1800);
+}
+
+/* ================= events ================= */
+document.querySelectorAll("[data-unit]").forEach(b=>
+  b.addEventListener("click", ()=>{
+    const to=b.dataset.unit;
+    if(to===S.unit) return;
+    // convert any entered lengths so the numbers stay true
+    ["ballY","needY"].forEach(id=>{
+      const v=num($(id).value);
+      if(v!=null) $(id).value = r1(to==="m" ? v/YD_PER_M : v*YD_PER_M);
+    });
+    setUnit(to);
+  }));
+document.querySelectorAll("[data-basis]").forEach(b=>
+  b.addEventListener("click", ()=>setBasis(+b.dataset.basis)));
+
+["ballG","ballY","curG","fullSk","needY"].forEach(id=>
+  $(id).addEventListener("input", calcYarn));
+["patSt","mySt","patCount","repMult","repPlus"].forEach(id=>
+  $(id).addEventListener("input", calcGauge));
+
+$("stashSave").addEventListener("click", ()=>{
+  const g=num($("ballG").value), len=num($("ballY").value);
+  if(g==null || len==null || g<=0 || len<=0){ toast("Enter ball band grams & length first"); return; }
+  const name=prompt("Save this yarn as:");
+  if(!name || !name.trim()) return;
+  S.stash[name.trim()]={g, len, unit:S.unit};
+  save(); renderStash();
+  $("stashSel").value=name.trim();
+  toast("Saved to stash");
+});
+$("stashSel").addEventListener("change", ()=>{
+  const y=S.stash[$("stashSel").value];
+  if(!y) return;
+  const len = y.unit===S.unit ? y.len : (S.unit==="m" ? y.len/YD_PER_M : y.len*YD_PER_M);
+  $("ballG").value=y.g; $("ballY").value=r1(len);
+  calcYarn();
+});
+$("stashDel").addEventListener("click", ()=>{
+  const n=$("stashSel").value;
+  if(!n){ toast("Pick a saved yarn first"); return; }
+  if(!confirm(`Delete "${n}" from the stash?`)) return;
+  delete S.stash[n];
+  save(); renderStash(); toast("Deleted");
+});
+
+/* ================= init ================= */
+setUnit(S.unit); setBasis(S.basis); renderStash();
+</script>
+</body>
+</html>

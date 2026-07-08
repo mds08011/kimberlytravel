@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<!--
+  PUMP ROOM — Water Chemistry Calculator
+  v1.0.0 · 2026-07-07
+  Single-file, offline, zero dependencies. Pure HTML/CSS/JS.
+  Bodies of water are hardcoded below in POOLS (edit there to change volumes/targets).
+  Dosing figures are field estimates — dose in stages, circulate, retest.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#10181d">
+<title>Pump Room — Chemistry Calculator</title>
+<style>
+  :root{
+    --bg:#10181d;          /* wet concrete */
+    --panel:#17232b;
+    --panel2:#1c2a34;
+    --line:#2a3b46;
+    --ink:#e9f1f4;
+    --dim:#8ba1ac;
+    --faint:#5d7280;
+    --water:#46c8dd;       /* waterline cyan — data & selection */
+    --chlor:#f2c53d;       /* drum yellow — chlorine & caution */
+    --acid:#e5534b;        /* acid red — danger & corrosive */
+    --ok:#55c98c;          /* balanced green */
+    --scale:#b18cf2;       /* scale purple (Orenda convention) */
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    background:var(--bg);color:var(--ink);font-family:var(--sans);
+    font-size:16px;line-height:1.45;
+    padding:0 14px calc(28px + env(safe-area-inset-bottom));
+  }
+  .wrap{max-width:760px;margin:0 auto}
+
+  /* ---------- header ---------- */
+  header{
+    display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+    padding:18px 2px 12px;border-bottom:1px solid var(--line);
+  }
+  h1{font-size:1.05rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+  h1 .tick{color:var(--water)}
+  header .ver{font-family:var(--mono);font-size:.7rem;color:var(--faint)}
+
+  .microlabel{
+    font-size:.66rem;font-weight:700;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--dim);
+  }
+
+  section{margin-top:20px}
+  .sechead{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .sechead::after{content:"";flex:1;height:1px;background:var(--line)}
+
+  /* ---------- pool selector ---------- */
+  .pools{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .pool{
+    appearance:none;border:1px solid var(--line);background:var(--panel);
+    color:var(--ink);border-radius:10px;padding:12px 12px 10px;text-align:left;
+    cursor:pointer;min-height:64px;
+  }
+  .pool .pname{font-weight:700;font-size:.95rem}
+  .pool .pvol{font-family:var(--mono);font-size:.78rem;color:var(--dim);margin-top:2px}
+  .pool[aria-pressed="true"]{
+    border-color:var(--water);background:var(--panel2);
+    box-shadow:inset 0 0 0 1px var(--water);
+  }
+  .pool[aria-pressed="true"] .pvol{color:var(--water)}
+  .pool:focus-visible{outline:2px solid var(--water);outline-offset:2px}
+
+  /* ---------- readings ---------- */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  @media(max-width:430px){.grid{grid-template-columns:repeat(2,1fr)}}
+  .field{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+  .field label{display:block;font-size:.64rem;font-weight:700;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--dim);margin-bottom:3px}
+  .field input,.field select{
+    width:100%;background:transparent;border:none;color:var(--ink);
+    font-family:var(--mono);font-size:1.25rem;font-weight:600;padding:0;
+  }
+  .field input:focus,.field select:focus{outline:none}
+  .field:focus-within{border-color:var(--water)}
+  .field select{appearance:none;font-size:1rem;padding:3px 0}
+  input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  input[type=number]{-moz-appearance:textfield}
+
+  .rowbtns{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .btn{
+    appearance:none;border:1px solid var(--line);background:var(--panel);
+    color:var(--ink);border-radius:8px;padding:9px 14px;font-size:.85rem;
+    font-weight:600;cursor:pointer;
+  }
+  .btn:active{background:var(--panel2)}
+  .btn:focus-visible{outline:2px solid var(--water);outline-offset:2px}
+  .btn.primary{border-color:var(--water);color:var(--water)}
+  .stamp{font-family:var(--mono);font-size:.7rem;color:var(--faint);align-self:center;margin-left:auto}
+
+  /* ---------- violation banner (hazard stripe) ---------- */
+  .hazard{
+    display:none;margin-top:12px;border:1px solid var(--acid);border-radius:10px;
+    background:var(--panel);overflow:hidden;
+  }
+  .hazard.show{display:block}
+  .hazard .stripe{
+    height:8px;
+    background:repeating-linear-gradient(-45deg,var(--chlor) 0 10px,#0e1418 10px 20px);
+  }
+  .hazard .msg{padding:10px 12px;font-size:.86rem}
+  .hazard .msg b{color:var(--acid)}
+
+  /* ---------- LSI gauge ---------- */
+  .gauge-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .gauge-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+  .lsi-num{font-family:var(--mono);font-size:1.9rem;font-weight:700}
+  .lsi-word{font-size:.72rem;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+  .lsi-note{margin-top:8px;font-size:.8rem;color:var(--dim)}
+  svg{display:block;width:100%;height:auto}
+
+  /* ---------- dose cards ---------- */
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:12px 14px;margin-top:10px}
+  .card-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap}
+  .card-head h3{font-size:.92rem;font-weight:700}
+  .readpair{font-family:var(--mono);font-size:.82rem;color:var(--dim)}
+  .readpair b{color:var(--ink);font-weight:600}
+  .tgt{display:inline-flex;align-items:center;gap:5px;font-size:.72rem;color:var(--dim)}
+  .tgt input{
+    width:4.2em;background:var(--panel2);border:1px solid var(--line);border-radius:6px;
+    color:var(--ink);font-family:var(--mono);font-size:.85rem;padding:3px 5px;text-align:right;
+  }
+  .chemsel{margin-top:8px}
+  .chemsel select{
+    width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+    color:var(--ink);font-size:.88rem;padding:8px 10px;appearance:none;
+  }
+  .dose{margin-top:10px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .dose .amt{font-family:var(--mono);font-size:1.55rem;font-weight:700;color:var(--water)}
+  .dose .amt.warn{color:var(--chlor)}
+  .dose .amt.ok{color:var(--ok);font-size:1.05rem}
+  .dose .sub{font-family:var(--mono);font-size:.8rem;color:var(--dim)}
+  .note{margin-top:7px;font-size:.78rem;color:var(--dim)}
+  .note.alert{color:var(--chlor)}
+
+  /* ---------- footer ---------- */
+  footer{margin-top:26px;border-top:1px solid var(--line);padding-top:12px;
+    font-size:.74rem;color:var(--faint);line-height:1.6}
+  footer code{font-family:var(--mono)}
+
+  .toast{
+    position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(8px);
+    background:var(--panel2);border:1px solid var(--water);color:var(--ink);
+    border-radius:8px;padding:8px 16px;font-size:.85rem;opacity:0;
+    pointer-events:none;transition:opacity .2s,transform .2s;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media (prefers-reduced-motion:reduce){.toast{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1><span class="tick">▮</span> Pump Room</h1>
+    <span class="ver">chem calc · v1.0.0 · offline</span>
+  </header>
+
+  <section aria-label="Body of water">
+    <div class="sechead"><span class="microlabel">Body of Water</span></div>
+    <div class="pools" id="pools"></div>
+  </section>
+
+  <section aria-label="Readings">
+    <div class="sechead"><span class="microlabel">Test Kit Readings</span></div>
+    <div class="grid" id="readings"></div>
+    <div class="rowbtns">
+      <button class="btn primary" id="copyLog" type="button">Copy log line</button>
+      <button class="btn" id="clearBtn" type="button">Clear readings</button>
+      <span class="stamp" id="stamp"></span>
+    </div>
+    <div class="hazard" id="hazard" role="alert">
+      <div class="stripe"></div>
+      <div class="msg" id="hazardMsg"></div>
+    </div>
+  </section>
+
+  <section aria-label="Water balance">
+    <div class="sechead"><span class="microlabel">Saturation Index (LSI)</span></div>
+    <div class="gauge-card">
+      <div class="gauge-top">
+        <span class="lsi-num" id="lsiNum">—</span>
+        <span class="lsi-word" id="lsiWord"></span>
+      </div>
+      <svg id="gauge" viewBox="0 0 700 84" role="img" aria-label="LSI gauge from -1 to +1"></svg>
+      <div class="lsi-note" id="lsiNote">Enter pH, temp, calcium hardness, and alkalinity to compute.</div>
+    </div>
+  </section>
+
+  <section aria-label="Dosing">
+    <div class="sechead"><span class="microlabel">Dosing</span></div>
+    <div id="cards"></div>
+  </section>
+
+  <footer>
+    All doses are <b>field estimates</b> scaled to the selected body's volume. Dose in stages
+    (max ⅓ at a time for pH/acid), keep circulation running, retest after one turnover.
+    Ranges reference CA Title 22 / county health minimums — verify against your permit.
+    Readings persist on this device only (<code>localStorage</code>). Nothing leaves the browser.
+  </footer>
+</div>
+
+<div class="toast" id="toast">Copied</div>
+
+<script>
+"use strict";
+/* ================= CONFIG — edit volumes & targets here ================= */
+const POOLS = [
+  { id:"comp",   name:"Competition Pool",  gal:315643, minFC:2.0,
+    targets:{ fc:3.0, ph:7.5, ta:90, ch:300, cya:30 } },
+  { id:"inst",   name:"Instructional Pool", gal:84200, minFC:2.0,
+    targets:{ fc:3.0, ph:7.5, ta:90, ch:300, cya:30 } },
+  { id:"splash", name:"Splash Pad",         gal:4100,  minFC:3.0,
+    targets:{ fc:4.0, ph:7.5, ta:90, ch:250, cya:30 } },
+  { id:"spa",    name:"Spa",                gal:2000,  minFC:3.0,
+    targets:{ fc:4.0, ph:7.5, ta:80, ch:200, cya:0 } },
+];
+
+const READ_FIELDS = [
+  { key:"fc",  label:"Free Cl (ppm)",  step:"0.1", ph:"2.4"  },
+  { key:"ph",  label:"pH",             step:"0.1", ph:"7.6"  },
+  { key:"ta",  label:"Alk (ppm)",      step:"1",   ph:"90"   },
+  { key:"ch",  label:"Ca Hard (ppm)",  step:"1",   ph:"300"  },
+  { key:"cya", label:"CYA (ppm)",      step:"1",   ph:"30"   },
+  { key:"temp",label:"Temp (°F)",      step:"1",   ph:"80"   },
+];
+
+/* Chlorine chemicals — dose per 1 ppm FC per 10,000 gal */
+const CHLOR = [
+  { id:"lq125",   name:"Liquid chlorine 12.5%", type:"liq", per:10.7 },            // fl oz
+  { id:"ch65",    name:"Cal-hypo 65%",          type:"dry", per:2.05 },            // oz wt
+  { id:"ch73",    name:"Cal-hypo 73%",          type:"dry", per:1.83 },
+  { id:"dichlor", name:"Dichlor 56%",           type:"dry", per:2.40, cya:0.9 },
+  { id:"trichlor",name:"Trichlor 90%",          type:"dry", per:1.50, cya:0.6 },
+];
+
+/* pH-down chemicals — dose per 0.1 pH per 10,000 gal at TA 100 (scaled by TA/100) */
+const ACID = [
+  { id:"ma3145", name:"Muriatic acid 31.45%",      type:"liq", per:6.5 },  // fl oz
+  { id:"dry93",  name:"Dry acid (bisulfate 93%)",  type:"dry", per:6.5 },  // oz wt
+];
+
+/* Other per-10k-gal constants */
+const K = {
+  sodaAshPer01pH: 3.5,     // oz wt per 0.1 pH up (≈, scaled by TA/100)
+  sodaAshTAper16oz: 11.3,  // ppm TA added per 1 lb soda ash per 10k gal
+  bicarbPer10TA: 1.4,      // lb per +10 ppm TA
+  maPer10TA: 25.6,         // fl oz muriatic per −10 ppm TA
+  caclPer10CH: 1.25,       // lb CaCl2 77% per +10 ppm CH
+  cyaPer10: 0.83,          // lb stabilizer per +10 ppm CYA
+  thioPer1FC: 2.6,         // oz sodium thiosulfate per −1 ppm FC
+};
+
+const TF_TABLE = [[32,0],[37,.1],[46,.2],[53,.3],[60,.4],[66,.5],[76,.6],[84,.7],[94,.8],[105,.9]];
+const LS_KEY = "pumproom.v1";
+
+/* ================= state ================= */
+let S = load();
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw){ const p = JSON.parse(raw); if(p && p.pools) return p; }
+  }catch(e){/* private mode / file:// quirks — run stateless */}
+  const s = { active:"comp", pools:{} };
+  POOLS.forEach(p=>{ s.pools[p.id] = { r:{}, t:{...p.targets}, chlor:"lq125", acid:"ma3145", stamp:null }; });
+  return s;
+}
+function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){} }
+const pool  = () => POOLS.find(p=>p.id===S.active);
+const pstate= () => S.pools[S.active];
+const num   = v => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
+
+/* ================= math ================= */
+function tempFactor(t){
+  if(t<=32) return 0;
+  if(t>=105) return .9;
+  for(let i=0;i<TF_TABLE.length-1;i++){
+    const [a,fa]=TF_TABLE[i], [b,fb]=TF_TABLE[i+1];
+    if(t>=a && t<=b) return fa+(fb-fa)*(t-a)/(b-a);
+  }
+  return .9;
+}
+function calcLSI(r){
+  if(r.ph==null || r.temp==null || r.ch==null || r.ta==null) return null;
+  if(r.ch<=0 || r.ta<=0) return null;
+  const adjTA = Math.max(1, r.ta - (r.cya??0)/3);   // carbonate correction for CYA
+  const cf = Math.log10(r.ch) - 0.4;
+  const af = Math.log10(adjTA);
+  return r.ph + tempFactor(r.temp) + cf + af - 12.1; // TDS < 1000 assumed
+}
+
+/* ================= formatting ================= */
+function fmtDryOz(oz){
+  if(oz >= 16){
+    const lb = oz/16;
+    const main = lb >= 100 ? Math.round(lb)+" lb" : (Math.round(lb*10)/10)+" lb";
+    const whole = Math.floor(lb), rem = Math.round((lb-whole)*16);
+    return { main, sub: whole>0 && rem>0 ? `${whole} lb ${rem} oz` : "" };
+  }
+  return { main:(Math.round(oz*10)/10)+" oz", sub:"" };
+}
+function fmtLiqOz(floz){
+  if(floz >= 128) return { main:(floz/128).toFixed(1)+" gal", sub:Math.round(floz)+" fl oz" };
+  if(floz >= 32)  return { main:Math.round(floz)+" fl oz",   sub:(floz/32).toFixed(1)+" qt" };
+  return { main:(floz<10 ? floz.toFixed(1) : Math.round(floz))+" fl oz", sub:"" };
+}
+const fmtAmt = (type,v) => type==="liq" ? fmtLiqOz(v) : fmtDryOz(v);
+const fmtGal = g => g>=1000 ? Math.round(g).toLocaleString()+" gal" : Math.round(g)+" gal";
+
+/* ================= dose engine ================= */
+function doses(){
+  const p = pool(), ps = pstate(), vol = p.gal/10000;
+  const r = {}; READ_FIELDS.forEach(f => r[f.key]=num(ps.r[f.key]));
+  const t = ps.t;
+  const out = [];
+
+  /* --- Free Chlorine --- */
+  {
+    const c = { key:"fc", title:"Free Chlorine", cur:r.fc, tgt:t.fc, unit:"ppm",
+                chems:CHLOR, chemSel:"chlor", notes:[] };
+    if(r.fc==null){ c.state="empty"; }
+    else if(r.fc < t.fc - 0.15){
+      const chem = CHLOR.find(x=>x.id===ps.chlor) || CHLOR[0];
+      const delta = t.fc - r.fc;
+      c.state="dose";
+      c.amt = fmtAmt(chem.type, chem.per * delta * vol);
+      c.verb = "Add "+chem.name;
+      if(chem.cya) c.notes.push(`Adds ≈ ${(chem.cya*delta).toFixed(1)} ppm CYA — watch stabilizer.`);
+    }
+    else if(r.fc > 10){
+      c.state="dose"; c.warn=true;
+      c.amt = fmtDryOz(K.thioPer1FC * (r.fc - t.fc) * vol);
+      c.verb = "Over 10 ppm — add sodium thiosulfate (or hold & let it burn down)";
+    }
+    else { c.state="ok"; }
+    out.push(c);
+  }
+
+  /* --- pH --- */
+  {
+    const taScale = Math.max(0.4, (r.ta ?? 100)/100);
+    const c = { key:"ph", title:"pH", cur:r.ph, tgt:t.ph, unit:"", step:"0.1", notes:[] };
+    if(r.ph==null){ c.state="empty"; }
+    else if(r.ph > t.ph + 0.05){
+      const chem = ACID.find(x=>x.id===ps.acid) || ACID[0];
+      const delta = r.ph - t.ph;
+      c.chems = ACID; c.chemSel = "acid";
+      c.state="dose";
+      c.amt = fmtAmt(chem.type, chem.per * (delta/0.1) * vol * taScale);
+      c.verb = "Add "+chem.name;
+      if(delta > 0.4) c.notes.push("Large correction — dose in thirds, retest between.");
+      if(r.ta!=null && r.ta<60) c.notes.push("Low alkalinity: pH will move fast. Go light.");
+    }
+    else if(r.ph < t.ph - 0.05){
+      const delta = t.ph - r.ph;
+      const oz = K.sodaAshPer01pH * (delta/0.1) * vol * taScale;
+      c.state="dose";
+      c.amt = fmtDryOz(oz);
+      c.verb = "Add soda ash";
+      c.notes.push(`Raises TA ≈ ${((oz/16)*K.sodaAshTAper16oz/vol).toFixed(0)} ppm. Aeration also raises pH with no chemical.`);
+    }
+    else { c.state="ok"; }
+    out.push(c);
+  }
+
+  /* --- Total Alkalinity --- */
+  {
+    const c = { key:"ta", title:"Total Alkalinity", cur:r.ta, tgt:t.ta, unit:"ppm", notes:[] };
+    if(r.ta==null){ c.state="empty"; }
+    else if(r.ta < t.ta - 5){
+      c.state="dose";
+      c.amt = fmtDryOz(K.bicarbPer10TA * ((t.ta-r.ta)/10) * vol * 16);
+      c.verb = "Add sodium bicarbonate";
+    }
+    else if(r.ta > t.ta + 10){
+      c.state="dose";
+      c.amt = fmtLiqOz(K.maPer10TA * ((r.ta-t.ta)/10) * vol);
+      c.verb = "Add muriatic acid 31.45%";
+      c.notes.push("Drops pH too — stage the dose and re-balance pH after.");
+    }
+    else { c.state="ok"; }
+    out.push(c);
+  }
+
+  /* --- Calcium Hardness --- */
+  {
+    const c = { key:"ch", title:"Calcium Hardness", cur:r.ch, tgt:t.ch, unit:"ppm", notes:[] };
+    if(r.ch==null){ c.state="empty"; }
+    else if(r.ch < t.ch - 10){
+      c.state="dose";
+      c.amt = fmtDryOz(K.caclPer10CH * ((t.ch-r.ch)/10) * vol * 16);
+      c.verb = "Add calcium chloride 77%";
+      c.notes.push("Pre-dissolve; broadcast slowly. Never mix with other chems.");
+    }
+    else if(r.ch > t.ch + 100){
+      const frac = 1 - t.ch/r.ch;
+      c.state="dose"; c.warn = true;
+      c.amt = { main:Math.round(frac*100)+"% drain & refill", sub:"≈ "+fmtGal(frac*p.gal) };
+      c.verb = "Dilution only — no chemical lowers CH";
+    }
+    else { c.state="ok"; }
+    out.push(c);
+  }
+
+  /* --- CYA --- */
+  {
+    const c = { key:"cya", title:"Stabilizer (CYA)", cur:r.cya, tgt:t.cya, unit:"ppm", notes:[] };
+    if(r.cya==null){ c.state="empty"; }
+    else if(t.cya>0 && r.cya < t.cya - 5){
+      c.state="dose";
+      c.amt = fmtDryOz(K.cyaPer10 * ((t.cya-r.cya)/10) * vol * 16);
+      c.verb = "Add cyanuric acid";
+      c.notes.push("Dissolves slowly — sock in front of a return; don't retest for 48 h.");
+    }
+    else if(r.cya > Math.max(t.cya,50) + 20){
+      const tgt = t.cya>0 ? t.cya : 30;
+      const frac = 1 - tgt/r.cya;
+      c.state="dose"; c.warn = true;
+      c.amt = { main:Math.round(frac*100)+"% drain & refill", sub:"≈ "+fmtGal(frac*p.gal) };
+      c.verb = "Dilution only — CYA doesn't degrade";
+    }
+    else { c.state="ok"; }
+    out.push(c);
+  }
+
+  return { r, out };
+}
+
+/* ================= render ================= */
+const $ = id => document.getElementById(id);
+
+function renderPools(){
+  $("pools").innerHTML = POOLS.map(p=>`
+    <button class="pool" type="button" data-id="${p.id}" aria-pressed="${p.id===S.active}">
+      <span class="pname">${p.name}</span>
+      <span class="pvol">${p.gal.toLocaleString()} gal</span>
+    </button>`).join("");
+}
+
+function renderReadings(){
+  const ps = pstate();
+  $("readings").innerHTML = READ_FIELDS.map(f=>`
+    <div class="field">
+      <label for="in-${f.key}">${f.label}</label>
+      <input id="in-${f.key}" data-key="${f.key}" type="number" inputmode="decimal"
+             step="${f.step}" placeholder="${f.ph}" value="${ps.r[f.key] ?? ""}">
+    </div>`).join("");
+  $("stamp").textContent = ps.stamp ? "last edit "+ps.stamp : "";
+}
+
+function renderGauge(lsi){
+  const w=700, h=84, x0=30, x1=w-30, y=46;
+  const X = v => x0 + (Math.max(-1,Math.min(1,v))+1)/2*(x1-x0);
+  const zone = (a,b,color)=>`<rect x="${X(a)}" y="${y-7}" width="${X(b)-X(a)}" height="14" rx="4" fill="${color}" opacity=".8"/>`;
+  let svg = "";
+  svg += zone(-1,-0.3,"var(--acid)") + zone(-0.3,0.3,"var(--ok)") + zone(0.3,1,"var(--scale)");
+  for(const v of [-1,-0.5,-0.3,0,0.3,0.5,1]){
+    svg += `<line x1="${X(v)}" y1="${y+10}" x2="${X(v)}" y2="${y+16}" stroke="var(--faint)" stroke-width="1.5"/>
+            <text x="${X(v)}" y="${y+32}" fill="var(--dim)" font-size="13"
+                  font-family="var(--mono)" text-anchor="middle">${v>0?"+":""}${v}</text>`;
+  }
+  svg += `<text x="${X(-0.65)}" y="${y-16}" fill="var(--acid)"  font-size="12" font-weight="700" letter-spacing="2" text-anchor="middle">CORROSIVE</text>
+          <text x="${X(0)}"     y="${y-16}" fill="var(--ok)"    font-size="12" font-weight="700" letter-spacing="2" text-anchor="middle">BALANCED</text>
+          <text x="${X(0.65)}"  y="${y-16}" fill="var(--scale)" font-size="12" font-weight="700" letter-spacing="2" text-anchor="middle">SCALING</text>`;
+  if(lsi!=null){
+    const nx = X(lsi);
+    svg += `<polygon points="${nx-7},${y-22} ${nx+7},${y-22} ${nx},${y-9}" fill="var(--ink)"/>
+            <line x1="${nx}" y1="${y-9}" x2="${nx}" y2="${y+8}" stroke="var(--ink)" stroke-width="2.5"/>`;
+  }
+  $("gauge").innerHTML = svg;
+
+  const numEl=$("lsiNum"), wordEl=$("lsiWord"), noteEl=$("lsiNote");
+  if(lsi==null){
+    numEl.textContent="—"; numEl.style.color="var(--dim)";
+    wordEl.textContent=""; 
+    noteEl.textContent="Enter pH, temp, calcium hardness, and alkalinity to compute.";
+    return;
+  }
+  numEl.textContent=(lsi>0?"+":"")+lsi.toFixed(2);
+  let color,word,note;
+  if(lsi<-0.3){ color="var(--acid)"; word="Corrosive";
+    note="Water is under-saturated — etches plaster, attacks grout & metals. Raise CH, TA, or pH."; }
+  else if(lsi>0.3){ color="var(--scale)"; word="Scale-forming";
+    note="Water is over-saturated — expect scale on tile lines and heater surfaces. Lower pH or TA."; }
+  else { color="var(--ok)"; word="Balanced";
+    note="Saturation index within ±0.3. CYA-corrected carbonate alkalinity used."; }
+  numEl.style.color=color; wordEl.style.color=color; wordEl.textContent=word; noteEl.textContent=note;
+}
+
+function renderCards(d){
+  const ps = pstate();
+  $("cards").innerHTML = d.out.map(c=>{
+    const cur = c.cur==null ? "—" : c.cur;
+    let body = "";
+    if(c.chems && (c.state==="dose" || c.key==="fc")){
+      const sel = c.chemSel==="chlor" ? ps.chlor : ps.acid;
+      body += `<div class="chemsel"><select data-chemsel="${c.chemSel}" aria-label="Chemical for ${c.title}">
+        ${c.chems.map(x=>`<option value="${x.id}" ${x.id===sel?"selected":""}>${x.name}</option>`).join("")}
+      </select></div>`;
+    }
+    if(c.state==="empty"){
+      body += `<div class="dose"><span class="amt ok" style="color:var(--faint)">enter reading</span></div>`;
+    } else if(c.state==="ok"){
+      body += `<div class="dose"><span class="amt ok">✓ on target</span></div>`;
+    } else {
+      body += `<div class="dose">
+        <span class="amt ${c.warn?"warn":""}">${c.amt.main}</span>
+        ${c.amt.sub?`<span class="sub">${c.amt.sub}</span>`:""}
+      </div>
+      <div class="note">${c.verb}</div>`;
+    }
+    body += (c.notes||[]).map(n=>`<div class="note alert">⚠ ${n}</div>`).join("");
+    return `<div class="card">
+      <div class="card-head">
+        <h3>${c.title}</h3>
+        <span class="readpair"><b>${cur}</b> → 
+          <span class="tgt">target
+            <input data-tgt="${c.key}" type="number" inputmode="decimal"
+                   step="${c.step||"1"}" value="${c.tgt}"> ${c.unit}
+          </span>
+        </span>
+      </div>
+      ${body}
+    </div>`;
+  }).join("");
+}
+
+function renderHazard(r){
+  const p = pool(), msgs = [];
+  if(r.fc!=null && r.fc < p.minFC)
+    msgs.push(`<b>FC ${r.fc} ppm is below the ${p.minFC} ppm minimum.</b> Close this body until chlorine is restored & retested.`);
+  if(r.fc!=null && r.fc > 10)
+    msgs.push(`<b>FC ${r.fc} ppm exceeds the 10 ppm max.</b> Keep bathers out until it burns down or is neutralized.`);
+  if(r.ph!=null && (r.ph < 7.2 || r.ph > 8.0))
+    msgs.push(`<b>pH ${r.ph} is outside the 7.2–8.0 code range.</b> Correct before reopening.`);
+  const el = $("hazard");
+  el.classList.toggle("show", msgs.length>0);
+  $("hazardMsg").innerHTML = msgs.join("<br>");
+}
+
+function renderAll(){
+  renderPools();
+  renderReadings();
+  refresh();
+}
+function refresh(){
+  const d = doses();
+  renderHazard(d.r);
+  renderGauge(calcLSI(d.r));
+  renderCards(d);
+}
+
+/* ================= events (delegated) ================= */
+$("pools").addEventListener("click", e=>{
+  const b = e.target.closest(".pool"); if(!b) return;
+  S.active = b.dataset.id; save(); renderAll();
+});
+
+$("readings").addEventListener("input", e=>{
+  const k = e.target.dataset.key; if(!k) return;
+  pstate().r[k] = e.target.value;
+  pstate().stamp = new Date().toLocaleString([], {month:"numeric",day:"numeric",hour:"numeric",minute:"2-digit"});
+  $("stamp").textContent = "last edit "+pstate().stamp;
+  save(); refresh();
+});
+
+$("cards").addEventListener("input", e=>{
+  if(e.target.dataset.tgt){
+    const v = num(e.target.value);
+    if(v!=null) pstate().t[e.target.dataset.tgt] = v;
+    save(); refresh();
+    return;
+  }
+});
+$("cards").addEventListener("change", e=>{
+  if(e.target.dataset.chemsel){
+    pstate()[e.target.dataset.chemsel] = e.target.value;
+    save(); refresh();
+  }
+});
+
+$("clearBtn").addEventListener("click", ()=>{
+  pstate().r = {}; pstate().stamp = null;
+  save(); renderReadings(); refresh();
+});
+
+$("copyLog").addEventListener("click", ()=>{
+  const p = pool(), ps = pstate();
+  const r = {}; READ_FIELDS.forEach(f=>r[f.key]=num(ps.r[f.key]));
+  const lsi = calcLSI(r);
+  const seg = [];
+  if(r.fc!=null)  seg.push("FC "+r.fc);
+  if(r.ph!=null)  seg.push("pH "+r.ph);
+  if(r.ta!=null)  seg.push("TA "+r.ta);
+  if(r.ch!=null)  seg.push("CH "+r.ch);
+  if(r.cya!=null) seg.push("CYA "+r.cya);
+  if(r.temp!=null)seg.push(r.temp+"°F");
+  if(lsi!=null)   seg.push("LSI "+(lsi>0?"+":"")+lsi.toFixed(2));
+  const now = new Date();
+  const line = `${p.name} — ${now.toLocaleDateString([],{month:"2-digit",day:"2-digit"})} ${now.toLocaleTimeString([],{hour:"numeric",minute:"2-digit"})} — ${seg.join(" / ")||"no readings"}`;
+  const done = ok => {
+    const t=$("toast"); t.textContent = ok?"Copied — paste into DigiQuatics":"Copy failed — long-press to select";
+    t.classList.add("show"); setTimeout(()=>t.classList.remove("show"),1800);
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(line).then(()=>done(true)).catch(()=>fallbackCopy(line,done));
+  } else fallbackCopy(line,done);
+});
+function fallbackCopy(text,done){
+  const ta=document.createElement("textarea");
+  ta.value=text; ta.style.position="fixed"; ta.style.opacity="0";
+  document.body.appendChild(ta); ta.select();
+  let ok=false; try{ ok=document.execCommand("copy"); }catch(e){}
+  document.body.removeChild(ta); done(ok);
+}
+
+renderAll();
+</script>
+</body>
+</html>
