@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Costing and Pricing Craft Jobs per Piece</title>
+  <link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+  <header>
+    <nav>
+      <ul>
+        <li><a href="../../index.html">Home</a></li>
+        <li><a href="../../travelmap/">Travel Map</a></li>
+        <li><a href="../index.html">Blog</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <h1>Costing and Pricing Craft Jobs per Piece</h1>
+      <time datetime="2026-07-01">July 2026</time>
+
+      <p>Craft Price is a single-file, offline job costing calculator for vinyl and craft work. It accounts the true per-piece cost — blank, vinyl actually consumed, other materials, labor, overhead — then prices it at a target margin or markup, and totals a whole job into a copyable quote block [1].</p>
+
+      <h2>The problem</h2>
+      <p>Craft pricing usually goes wrong twice. First, the cost side omits things: the vinyl gets counted as "about a dollar," the two hours of weeding get counted as zero, and the press's wear gets counted never. Second, the pricing side confuses margin with markup — a crafter aiming for "40% profit" applies 40% <em>markup</em> and unknowingly ends up with a 28.6% <em>margin</em>, underpricing every piece. The tool separates the two failure modes: an honest cost accounting, then an explicit choice of pricing convention.</p>
+
+      <h2>How it works</h2>
+      <p>The per-piece panel takes materials (blank cost; vinyl roll cost and length, plus inches used per piece; other materials) and labor &amp; overhead (minutes per piece, hourly rate, overhead per piece). It renders an itemized cost breakdown with a per-piece total. The vinyl inches-used figure pairs directly with the HTV Placement calculator's cut list [2] — read the piece height off the cut list and enter it here by hand. The pricing panel applies the chosen margin or markup, and the whole-job panel multiplies by quantity, reporting total price and total profit with a <strong>Copy quote</strong> button. Material presets (blank, roll, other) persist by name; labor deliberately does not persist, since it varies by design.</p>
+
+      <figure>
+        <img loading="lazy" src="/blog/img/PLACEHOLDER-craftprice-breakdown.png" alt="Craft Price showing the itemized per-piece cost breakdown and the margin-based price">
+        <figcaption>The itemized per-piece breakdown and the priced result. Placeholder pending a real screenshot.</figcaption>
+      </figure>
+
+      <h2>The math</h2>
+      <pre><code>per_piece = blank
+          + (roll_cost / roll_length) × inches_used
+          + other_materials
+          + (minutes / 60) × hourly_rate
+          + overhead</code></pre>
+      <h3>Margin vs. markup — not the same number</h3>
+      <p><strong>Margin</strong> is profit as a share of <em>price</em> (the convention retail uses). <strong>Markup</strong> is profit as a share of <em>cost</em>:</p>
+      <pre><code>margin:  price = cost / (1 − margin)      (guarded: margin must be &lt; 100%)
+markup:  price = cost × (1 + markup)</code></pre>
+      <p>The same 40% produces different prices. On a $6.00 piece: 40% markup gives $8.40 (profit $2.40 — which is only a 28.6% margin), while 40% margin gives $10.00 (profit $4.00). If the goal is "40% of what the customer pays is profit," margin is the number to use — and it is the common crafter error to reach for markup instead. The tool labels the toggle explicitly and guards the margin path against ≥ 100%, where the formula would go infinite.</p>
+
+      <h2>Editing the config</h2>
+      <p>There is no config table — every number is an input. The only constant at the top of the <code>&lt;script&gt;</code> block is <code>LS_KEY</code> (<code>craftprice.v1</code>), which stores the pricing basis, the target percentage, and the named material presets. The cost formula is the <code>perPiece()</code> function; the pricing conventions are in <code>price()</code>.</p>
+
+      <h2>Limitations</h2>
+      <ul>
+        <li>Vinyl cost is linear inches of roll. It does not model weeding waste, failed presses, or nesting efficiency — pad <code>inches_used</code> or the overhead line to taste.</li>
+        <li>Overhead is a flat per-piece figure the user supplies, not a derived machine-amortization model.</li>
+        <li>It prices one piece design at a time. A job mixing several designs is several calculations.</li>
+        <li>No tax, fees, or platform-cut handling — the quote is pre-fee revenue.</li>
+      </ul>
+
+      <section>
+        <h2>References</h2>
+        <ol>
+          <li><a href="../../tools/craftprice.html">Craft Job Pricing Calculator</a></li>
+          <li><a href="../../tools/htv.html">HTV Placement Calculator</a> — its batch cut list produces the per-piece vinyl dimensions entered here.</li>
+        </ol>
+      </section>
+    </article>
+  </main>
+
+  <footer>
+    <hr>
+    <p>This website's source code is open and available on <a href="https://github.com/mds08011/kimberlytravel">Github</a>.</p>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Forecasting Pool Chemical Inventory from Logged Tank Levels</title>
+  <link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+  <header>
+    <nav>
+      <ul>
+        <li><a href="../../index.html">Home</a></li>
+        <li><a href="../../travelmap/">Travel Map</a></li>
+        <li><a href="../index.html">Blog</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <h1>Forecasting Pool Chemical Inventory from Logged Tank Levels</h1>
+      <time datetime="2026-06-01">June 2026</time>
+
+      <p>Chem Stock is a single-file, offline burn-rate forecaster for the chemical room. Log a tank or drum level whenever someone is in there; the tool derives the consumption rate from the history, projects the days remaining, and computes a reorder-by date against each supplier's lead time. Like the rest of the aquatics suite, it is one HTML file with no server and no external requests [1].</p>
+
+      <h2>The problem</h2>
+      <p>Chemical reordering at a pool tends to run on eyeball and memory: someone notices the chlorine tank looks low, an order goes in, and for the next several days the facility runs a race between the delivery truck and the tank. The failure is not that consumption is unknowable — it is very steady over weeks — it is that nobody is doing the division. Chem Stock does the division. Any level reading anyone bothers to log becomes signal, and the reorder date falls out of arithmetic instead of anxiety.</p>
+
+      <h2>How it works</h2>
+      <p>Each product shows as a card with a miniature tank fill and a status line: green (days left), amber (<em>order by</em> a named date), or red (<strong>ORDER NOW</strong>, with a hazard banner naming the product and its projected empty date). Selecting a product shows the detail view — a tank gauge drawn as SVG with a dashed red <em>reorder</em> line, the burn rate, the projected empty date, and the reorder-by date. Below that is the logging form (level plus an editable timestamp for backfilling) and the reading history.</p>
+
+      <figure>
+        <img loading="lazy" src="/blog/img/PLACEHOLDER-chemstock-tank-gauge.png" alt="Chem Stock detail view showing the tank gauge with dashed reorder line, burn rate, and projected dates">
+        <figcaption>The detail view: tank gauge with the dashed reorder threshold, burn rate, and projected empty / reorder-by dates. Placeholder pending a real screenshot.</figcaption>
+      </figure>
+
+      <p>The reorder line on the gauge is drawn at the level where remaining supply equals lead time plus buffer — when the fill drops to the dashed line, it is time to order. <strong>Copy status</strong> formats a one-line-per-product summary for pasting into DigiQuatics; <strong>Export CSV</strong> writes the full reading history (with delivery flags) as a UTF-8 file for budget season.</p>
+
+      <h2>The math</h2>
+      <h3>Burn rate</h3>
+      <p>The rate is computed from consecutive level drops over a trailing 45-day window. Walking each adjacent pair of readings:</p>
+      <ul>
+        <li>A level <strong>drop</strong> counts as consumption over that interval.</li>
+        <li>A level <strong>rise greater than 5% of capacity</strong> is a delivery — the pair is excluded from the rate and the reading is flagged (▲) in the history.</li>
+        <li>A smaller rise is measurement noise: the elapsed time counts, the consumption doesn't.</li>
+      </ul>
+      <pre><code>rate        = total_consumed / total_days      (over the trailing 45-day window)
+days_to_empty = current_level / rate
+reorder_by    = projected_empty − lead_days − 3-day safety buffer</code></pre>
+      <p>Status turns amber inside a 7-day window ahead of the reorder-by date and red once the date has passed.</p>
+      <h3>Guards</h3>
+      <p>The tool refuses to project until there is real signal. A single reading, same-day pairs, or a history entirely outside the trailing window all report <em>logging — need more readings</em> instead of a fabricated date. A level entry more than 15% over tank capacity is rejected at input as a probable typo.</p>
+
+      <h2>Editing the config</h2>
+      <p>Products live in the <code>PRODUCTS</code> array at the top of the <code>&lt;script&gt;</code> block — name, unit, tank capacity, and supplier lead days:</p>
+      <pre><code>const PRODUCTS = [
+  { id:"naocl",   name:"Liquid Chlorine 12.5%", unit:"gal", capacity:500, leadDays:5 },
+  { id:"ma",      name:"Muriatic Acid 31.45%",  unit:"gal", capacity:110, leadDays:5 },
+  { id:"calhypo", name:"Cal-Hypo 65%",          unit:"lb",  capacity:400, leadDays:7 },
+  { id:"cya",     name:"Cyanuric Acid",         unit:"lb",  capacity:200, leadDays:7 },
+];</code></pre>
+      <p>The behavior constants sit directly below: <code>SAFETY_DAYS</code> (3), <code>SOON_DAYS</code> (7), <code>WINDOW_DAYS</code> (45), and <code>NOISE_FRAC</code> (0.05, the delivery-detection threshold). <strong>The capacities shipped in the file are placeholders</strong> — they need to be replaced with the facility's actual tank and drum sizes before the percentages and delivery detection mean anything.</p>
+
+      <h2>Limitations</h2>
+      <ul>
+        <li>The forecast is a trailing average. A heat wave, a swim meet, or a new leak changes the burn rate faster than a 45-day window notices — the projection catches up as new readings arrive, but it is a forecast, not a guarantee.</li>
+        <li>Delivery detection is a threshold heuristic. A partial delivery smaller than 5% of capacity is counted as noise; logging a reading immediately before and after a delivery keeps the rate clean.</li>
+        <li>History lives in one browser's <code>localStorage</code>. It does not sync between devices; the CSV export is the backup and the transfer mechanism.</li>
+        <li>It forecasts stock, it does not order. The reorder-by date still has to become a purchase order by human hands.</li>
+      </ul>
+
+      <section>
+        <h2>References</h2>
+        <ol>
+          <li><a href="../../tools/chemstock.html">Chem Stock Forecaster</a></li>
+        </ol>
+      </section>
+    </article>
+  </main>
+
+  <footer>
+    <hr>
+    <p>This website's source code is open and available on <a href="https://github.com/mds08011/kimberlytravel">Github</a>.</p>
+  </footer>
+</body>
+</html>

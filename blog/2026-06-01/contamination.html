@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Calculating CDC Fecal and Vomit Incident Response for Pools</title>
+  <link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+  <header>
+    <nav>
+      <ul>
+        <li><a href="../../index.html">Home</a></li>
+        <li><a href="../../travelmap/">Travel Map</a></li>
+        <li><a href="../index.html">Blog</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <h1>Calculating CDC Fecal and Vomit Incident Response for Pools</h1>
+      <time datetime="2026-06-01">June 2026</time>
+
+      <p>Contamination Response is a single-file, offline calculator that walks an operator through the CDC fecal/vomit incident protocol [1]: the hyperchlorination dose for the affected body of water, the CT-derived hold time, and a reopening countdown that survives a page reload. It is not a substitute for the CDC recommendations or the county health code — it is the arithmetic done correctly under stress [2].</p>
+
+      <h2>The problem</h2>
+      <p>A fecal incident closes a pool immediately, and everything that happens next is math performed by someone who would rather be doing anything else: how much chlorine raises this specific body of water to the target concentration, how long the hold lasts, and what clock time the pool can reopen. The diarrheal case adds a trap — cyanuric acid slows <em>Cryptosporidium</em> inactivation several-fold, so the standard 12.75-hour timetable is only valid at CYA ≈ 0, a condition that is easy to forget while the deck is being cleared. The tool hard-codes the protocol so the operator supplies readings, not recall.</p>
+
+      <h2>How it works</h2>
+      <p>Pick the incident type (formed stool / vomit, or diarrheal), the body of water, and enter the current FC, pH, and CYA readings plus the unstabilized chlorine on hand. The tool renders a numbered protocol — clear the water and close shared-filtration pools, remove the material (with a <em>do not vacuum</em> warning for diarrheal incidents), raise FC to target with a computed dose, re-balance pH to 7.2–7.5, hold — followed by a countdown timer. The timer starts only when the operator confirms FC is verified at target, and it persists through a reload or a dead tablet battery via <code>localStorage</code>. <strong>Copy incident log</strong> formats the whole event — readings at observation, dose, hold, reopen time — as a text block for DigiQuatics.</p>
+
+      <figure>
+        <img loading="lazy" src="/blog/img/PLACEHOLDER-contamination-protocol.png" alt="Contamination Response showing incident type selection, the numbered protocol with computed dose, and the hold countdown">
+        <figcaption>Incident type, computed hyperchlorination dose, and the disinfection hold countdown. Placeholder pending a real screenshot.</figcaption>
+      </figure>
+
+      <h2>The math</h2>
+      <h3>Targets and hold times</h3>
+      <p>The two incident classes implement the CDC response values [1]:</p>
+      <ul>
+        <li><strong>Formed stool / vomit</strong> (lower risk, <em>Giardia</em>): raise FC to <strong>2 ppm</strong>, pH 7.2–7.5, hold <strong>30 minutes</strong> (CT 45).</li>
+        <li><strong>Diarrheal</strong> (higher risk, <em>Cryptosporidium</em>): raise FC to <strong>20 ppm</strong>, pH 7.2–7.5, hold <strong>12.75 hours</strong> (CT 15,300).</li>
+      </ul>
+      <p>The hold is computed as:</p>
+      <pre><code>hold_minutes = max(minHold, CT / targetFC)</code></pre>
+      <p>For diarrheal, 15,300 ÷ 20 = 765 minutes = 12.75 h exactly. For formed stool, CT 45 ÷ 2 = 22.5 minutes, floored to the CDC field-guidance 30-minute minimum — the <code>minHold</code> term exists precisely so the CT arithmetic can't undercut published guidance.</p>
+      <h3>Dose</h3>
+      <p>The hyperchlorination dose reuses the same per-10,000-gallon constants as the Pump Room calculator [3], restricted to unstabilized chlorines (liquid 12.5%, cal-hypo 65/73%) — stabilized products would add CYA at the worst possible moment. Verified worked example: raising the Competition Pool (315,643 gal) from 3 to 20 ppm requires 44.9 gal of liquid chlorine 12.5%, or 68.8 lb of cal-hypo 65%.</p>
+      <h3>The CYA interlock</h3>
+      <p>For diarrheal incidents only, the CYA field is an interlock, not a note:</p>
+      <ul>
+        <li>A <strong>blank</strong> CYA reading blocks the timer from starting — the operator must measure it.</li>
+        <li>CYA <strong>≥ 1 ppm</strong> declares the 12.75-hour timetable <strong>INVALID</strong>, directs partial drain / dilution first, and the timer refuses to start on the standard clock.</li>
+      </ul>
+      <p>Formed-stool incidents ignore CYA, matching the CDC guidance where stabilizer sensitivity applies to <em>Crypto</em> hyperchlorination.</p>
+
+      <h2>Editing the config</h2>
+      <p>Three tables at the top of the <code>&lt;script&gt;</code> block hold everything: <code>POOLS</code> (the four bodies and volumes, shared with Pump Room), <code>INCIDENTS</code> (target FC, CT, and <code>minHold</code> per incident class), and <code>CHLOR</code> (the unstabilized products and strengths). Some counties specify a 25-minute formed-stool hold rather than 30 — that is a one-line edit to <code>minHold</code> in the <code>INCIDENTS</code> table.</p>
+
+      <h2>Limitations</h2>
+      <ul>
+        <li>It deliberately does <strong>not</strong> implement the CDC extended stabilized-pool hold table. With CYA present in a diarrheal incident the tool's answer is <em>lower the CYA first</em>, not a longer clock — the extended holds run into multi-day territory where draining is almost always the right call anyway.</li>
+        <li>Temperature must be ≥ 77 °F for the published CT values; the tool states this but does not model cold-water extensions.</li>
+        <li>The countdown is informational. Reopening still requires verifying FC and pH at the end of the hold, and backwashing to waste after a diarrheal incident.</li>
+        <li>County health codes override everything here. Verify the targets and holds against the facility's permit before relying on the tool.</li>
+      </ul>
+
+      <section>
+        <h2>References</h2>
+        <ol>
+          <li><a href="https://www.cdc.gov/healthy-swimming/php/aquatics-professionals/fecal-incident-response.html">CDC — Fecal Incident Response Recommendations for Aquatic Staff</a></li>
+          <li><a href="../../tools/contamination.html">Contamination Response Calculator</a></li>
+          <li><a href="../../tools/pumproom.html">Pump Room Chemistry Calculator</a> — source of the shared dosing constants and pool volumes.</li>
+        </ol>
+      </section>
+    </article>
+  </main>
+
+  <footer>
+    <hr>
+    <p>This website's source code is open and available on <a href="https://github.com/mds08011/kimberlytravel">Github</a>.</p>
+  </footer>
+</body>
+</html>

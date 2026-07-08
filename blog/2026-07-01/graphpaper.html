@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Generating Gauge-True Knitting Chart Paper and Mesh Grids</title>
+  <link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+  <header>
+    <nav>
+      <ul>
+        <li><a href="../../index.html">Home</a></li>
+        <li><a href="../../travelmap/">Travel Map</a></li>
+        <li><a href="../index.html">Blog</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <h1>Generating Gauge-True Knitting Chart Paper and Mesh Grids</h1>
+      <time datetime="2026-07-01">July 2026</time>
+
+      <p>Graph Paper generates printable chart paper in two modes: knitter's gauge-true grids, where each cell is proportioned to the actual stitch:row gauge so a charted motif knits up undistorted, and needlepoint mesh-count grids with true-square cells sized to the canvas. Output prints at real physical scale with bold counting rules every N cells. It is a pure generator — single file, offline, no stored state [1].</p>
+
+      <h2>The problem</h2>
+      <p>Knitting stitches are wider than they are tall. Chart a motif on ordinary square graph paper and the knitted result is vertically squashed — a circle charted on squares knits as an oval. The fix is paper whose cells have the same aspect ratio as the stitches themselves, which depends on the knitter's own gauge, which is why the right paper can't be bought in a pad. Needlepoint has the adjacent problem: planning a canvas project is easiest on a grid that matches the mesh count at true size, so the plan lays over the canvas 1:1.</p>
+
+      <h2>How it works</h2>
+      <p>In knitter mode, enter stitch and row gauge (per 4 in) and the bold-rule interval. In mesh mode, enter the canvas mesh count. Pick Letter or A4, portrait or landscape. The tool reports the resulting cell dimensions, aspect ratio, and how many stitches × rows fit on the sheet, renders a live preview, and prints via the <strong>Print sheet</strong> button. Because the grid is regenerated on every input, there is nothing to save — adjust and reprint freely.</p>
+
+      <figure>
+        <img loading="lazy" src="/blog/img/PLACEHOLDER-graphpaper-preview.png" alt="Graph Paper showing a gauge-true grid preview with bold rules every ten cells and the cell-dimension readout">
+        <figcaption>A gauge-true grid preview with bold counting rules and the cell-size readout. Placeholder pending a real screenshot.</figcaption>
+      </figure>
+
+      <h2>The math</h2>
+      <pre><code>knitter mode:  cell_width  = 4 / stitch_gauge   (inches)
+               cell_height = 4 / row_gauge
+               aspect      = row_gauge / stitch_gauge   (&gt; 1: stitches wider than tall)
+
+mesh mode:     cell = 1 / mesh_count               (true square)
+
+grid: cols = floor(printable_width / cell_width), rows likewise
+printable area = paper − 0.5 in margin all round</code></pre>
+      <p>At a typical 18 sts × 24 rows / 4 in, cells come out 0.222 in wide × 0.167 in tall — an aspect of 1.33, visibly and correctly non-square.</p>
+      <h3>True-size printing</h3>
+      <p>The SVG is built in real inches (inches as SVG user units, with the element's <code>width</code>/<code>height</code> set in <code>in</code>). On screen the preview scales responsively; when <strong>Print sheet</strong> is clicked the tool swaps in a fixed-size, non-responsive copy of the SVG, prints, and swaps back on <code>afterprint</code>. The print stylesheet strips every UI element and sets <code>@page</code> margins to 0.5 in, so the only thing on paper is the grid and a one-line header naming the gauge.</p>
+      <p><strong>The printer dialog must be set to 100% / "Actual size" — not "Fit to page".</strong> Fit-scaling silently destroys the physical calibration that is the entire point. Verify once against a ruler: at 14-count mesh, ten cells should measure exactly 10/14 in ≈ 0.714 in.</p>
+
+      <h2>Editing the config</h2>
+      <p>There is nothing persisted and almost nothing to configure. The two constants at the top of the <code>&lt;script&gt;</code> block are <code>PAPER</code> (Letter and A4 dimensions in inches) and <code>MARGIN</code> (0.5 in). Stroke weights for thin and bold rules are the <code>thin</code>/<code>bold</code> locals in <code>buildSVG()</code>.</p>
+
+      <h2>Limitations</h2>
+      <ul>
+        <li>Physical accuracy is hostage to the print dialog. Any scaling setting other than 100% / Actual Size quietly breaks it — hence the ruler check.</li>
+        <li>Gauge-true cells are only as true as the entered gauge. Chart paper generated from the ball band's gauge instead of a measured swatch reproduces the ball band's optimism.</li>
+        <li>It generates blank charts, not charted designs — the motif still gets drawn by hand.</li>
+        <li>Paper sizes are Letter and A4 only.</li>
+      </ul>
+
+      <section>
+        <h2>References</h2>
+        <ol>
+          <li><a href="../../tools/graphpaper.html">Gauge-True Graph Paper</a></li>
+        </ol>
+      </section>
+    </article>
+  </main>
+
+  <footer>
+    <hr>
+    <p>This website's source code is open and available on <a href="https://github.com/mds08011/kimberlytravel">Github</a>.</p>
+  </footer>
+</body>
+</html>
