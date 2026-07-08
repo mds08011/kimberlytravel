@@ -69,6 +69,24 @@ result = the candidate nearest target</code></pre>
         <li>The repeat rounding matches a single "multiple of N plus P" rule. Stitch patterns with two interacting repeats are not modeled.</li>
       </ul>
 
+      <h2>Update: even shaping (v1.1.0)</h2>
+      <p>Version 1.1.0 adds a third panel that turns "decrease 7 evenly across 91" or "increase from 48 to 96 over 60 rows" into the literal instruction, in two modes with a decrease/increase toggle.</p>
+      <h3>Across a row</h3>
+      <p>Distributing C changes across N stitches divides the row into C groups of <code>floor(N/C)</code> stitches, with the <code>N mod C</code> leftover stitches absorbed one each into the larger groups. The result is run-length-encoded into pattern language using k2tog (decrease) or kfb (increase):</p>
+      <pre><code>91 sts, decrease 7  →  [k11, k2tog] 7×          (ends with 84 sts)</code></pre>
+      <p>Validation blocks impossible requests: decreasing more than <code>floor(N/2)</code> (each k2tog consumes two stitches) or increasing by more than N.</p>
+      <h3>Over rows</h3>
+      <p>Shaping S times across R rows rarely divides evenly, so the panel produces the standard two-interval split — larger interval <code>floor(R/S)+1</code> for <code>R mod S</code> repetitions, then smaller interval <code>floor(R/S)</code> for the rest:</p>
+      <pre><code>48 → 96 sts over 60 rows at 2 per shaping row
+  = 24 shaping rows  →  inc 2 every 3rd row 12×, then every 2nd row 12×</code></pre>
+      <p>It validates that the direction toggle matches the start/end counts, that the stitch difference divides evenly by the per-row change, and that the required shaping rows fit inside the row budget — each failure states which constraint broke rather than emitting a wrong instruction.</p>
+      <figure>
+        <img loading="lazy" src="/blog/img/PLACEHOLDER-skeinmath-shaping.png" alt="Even shaping panel showing a run-length-encoded decrease instruction and the resulting stitch count">
+        <figcaption>The v1.1.0 shaping panel: a distribute-across-the-row instruction in pattern language. Placeholder pending a real screenshot.</figcaption>
+      </figure>
+      <h3>Configuration</h3>
+      <p>The shaping logic lives in the <code>acrossInstruction()</code> and <code>overRows()</code> functions in the <code>&lt;script&gt;</code> block; the decrease/increase verbs (k2tog/kfb) are set in <code>acrossInstruction()</code>. Mode and direction selections persist with the rest of the tool state under <code>skeinmath.v1</code>.</p>
+
       <section>
         <h2>References</h2>
         <ol>
