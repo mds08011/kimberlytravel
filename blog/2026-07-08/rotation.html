@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Generating Lifeguard Stand Rotations with Even Break Distribution</title>
+  <link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+  <header>
+    <nav>
+      <ul>
+        <li><a href="../../index.html">Home</a></li>
+        <li><a href="../../travelmap/">Travel Map</a></li>
+        <li><a href="../index.html">Blog</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <h1>Generating Lifeguard Stand Rotations with Even Break Distribution</h1>
+      <time datetime="2026-07-08">July 8, 2026</time>
+
+      <p>Rotation Grid builds a timed stand-rotation schedule from the guards on shift and the stations that are open. It distributes breaks evenly through the cycle, guarantees that every guard covers every position over a full rotation, and can rebuild the remainder of the shift from the current time when a guard goes down — without altering the blocks already worked. It is a single-file, offline tool [1].</p>
+
+      <h2>The problem</h2>
+      <p>A rotation written by hand tends to bunch breaks toward the end of the cycle, leave one guard in the deep-water stand three blocks running, or quietly drop a station when someone leaves early. Redoing it mid-shift on paper means recomputing every remaining block by hand while the current one is already running. Rotation Grid makes the schedule a function of two lists — who is in and which stations are open — so a change to either regenerates a correct grid immediately.</p>
+
+      <h2>How it works</h2>
+      <p>Guards and stations are entered as chips. Tapping a chip toggles it out (struck through) without deleting it, so tomorrow's roster is a couple of taps from today's; the <strong>&#x2715;</strong> on a chip deletes it for good. The shift start, end, and rotation interval (10/15/20/30&nbsp;minutes) sit above. A live status line shows, before anything is generated, the number of break slots per block and the maximum consecutive time any guard spends in a stand — the policy check — updating as chips are toggled.</p>
+
+      <figure>
+        <img loading="lazy" src="/blog/img/PLACEHOLDER-rotation-grid.png" alt="Rotation Grid showing guard and station chips, the live status readout, and the generated time-by-station grid">
+        <figcaption>Roster chips and the live break/consecutive-time readout above the generated grid. Placeholder pending a real screenshot.</figcaption>
+      </figure>
+
+      <p><strong>Build grid</strong> generates the full schedule from shift start. The grid highlights the current block, dims completed blocks, and can be printed: a print stylesheet strips the interface down to a bordered black-on-white table for the wall. <strong>Copy from now</strong> exports only the remaining blocks, sized for a DigiQuatics staff alert; <strong>Copy full grid</strong> exports the whole thing.</p>
+
+      <h2>The math</h2>
+      <h3>Coverage</h3>
+      <p>For <em>N</em> guards there are <em>N</em> positions: the <em>M</em> open stations plus <em>N&nbsp;&minus;&nbsp;M</em> break slots. At row <em>r</em> of the cycle, the guard in slot <em>i</em> occupies position <code>(i - r) mod N</code>. Because the offset advances by one each block, every guard passes through every position exactly once over a full cycle — coverage is provably fair rather than eyeballed.</p>
+      <pre><code>guard at slot i, row r  →  position (i - r) mod N</code></pre>
+
+      <h3>Break distribution</h3>
+      <p>Breaks are spread through the cycle with a Bresenham-style test rather than clustered at the end. Walking the <em>N</em> positions, a break slot is placed at position <em>i</em> whenever the running count of breaks ticks over:</p>
+      <pre><code>place a break at i  when  floor((i+1)·B / N) &gt; floor(i·B / N)</code></pre>
+      <p>where <em>B</em> is the number of break slots. This is the same integer-only distribution a line-drawing algorithm uses to space pixels evenly.</p>
+
+      <h3>Mid-shift rebuild</h3>
+      <p><strong>Rebuild from now</strong> freezes every block that has already completed (its start plus the interval is at or before the current time), then regenerates only the future blocks with the currently active roster. Removing a guard clears them from all future blocks while the completed history stays intact; superseded blocks are tinted so the record shows what the plan was before the change.</p>
+
+      <h2>Editing the config</h2>
+      <p>The default station list is the one constant at the top of the <code>&lt;script&gt;</code> block:</p>
+      <pre><code>const DEFAULT_STATIONS = ["Comp North","Comp South","Comp Deep","Instructional","Splash Pad"];</code></pre>
+      <p>Everything else — guards, edited stations, shift times, interval, and the last generated grid — is entered in the interface and persisted to <code>localStorage</code> (<code>rotationgrid.v1</code>). The seed list only matters on first run or after a storage reset.</p>
+
+      <h2>Limitations</h2>
+      <ul>
+        <li>Coverage is <strong>position-agnostic</strong>. The algorithm guarantees each guard rotates through every open station, but it does not know that a given stand is certification-gated or that a particular guard should not be placed in deep water. It rotates people through stations uniformly; the head guard still owns those judgments.</li>
+        <li>It needs at least as many guards as open stations. Fewer guards than stations blocks generation with a banner naming how many stations to close; equal guards and stations warns that there are zero break slots.</li>
+        <li>Breaks are distributed by count and spacing, not by individual fatigue or meal-break law. The maximum-consecutive readout is the tool's contribution to that judgment; the policy decision is the operator's.</li>
+        <li>The grid is a plan, not attendance. It does not track who actually took which stand.</li>
+      </ul>
+
+      <section>
+        <h2>References</h2>
+        <ol>
+          <li><a href="../../tools/rotation.html">Rotation Grid</a></li>
+        </ol>
+      </section>
+    </article>
+  </main>
+
+  <footer>
+    <hr>
+    <p>This website's source code is open and available on <a href="https://github.com/mds08011/kimberlytravel">Github</a>.</p>
+  </footer>
+</body>
+</html>

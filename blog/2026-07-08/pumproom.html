@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Calculating Pool Chemical Doses and Water Balance Offline</title>
+  <link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+  <header>
+    <nav>
+      <ul>
+        <li><a href="../../index.html">Home</a></li>
+        <li><a href="../../travelmap/">Travel Map</a></li>
+        <li><a href="../index.html">Blog</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <h1>Calculating Pool Chemical Doses and Water Balance Offline</h1>
+      <time datetime="2026-07-08">July 8, 2026</time>
+
+      <p>Pump Room is a single-file, offline calculator for aquatics operators. It takes a set of test-kit readings for one of four bodies of water, computes the chemical doses needed to hit target, reports the Langelier Saturation Index (LSI) for scale/corrosion balance, and flags any reading that breaches code. It has no server, no build step, and no external requests — the whole tool is one HTML file with an inline stylesheet and script [1].</p>
+
+      <h2>The problem</h2>
+      <p>Dosing math on the pool deck is done under time pressure, often from memory or a laminated chart, and always per-pool: the same 1&nbsp;ppm free-chlorine correction is a splash of liquid chlorine in the spa and several gallons in the competition pool. A wrong order of magnitude either closes a body of water needlessly or leaves it under-treated. The pump room also has poor signal, so anything that depends on a live connection is unreliable exactly where it is needed. Pump Room fixes the volume, the code minimums, and the target set for each body in one place, so the operator enters readings and reads off quantities in the units they actually measure with.</p>
+
+      <h2>How it works</h2>
+      <p>The operator selects a body of water, enters test-kit readings (free chlorine, pH, total alkalinity, calcium hardness, cyanuric acid, temperature), and the tool renders three things live: a hazard banner if anything is out of code, the LSI gauge, and one dose card per chemistry parameter. Each dose card shows the current reading, an editable target, a chemical picker where more than one product applies, and the computed quantity formatted into field units (fluid ounces, quarts, gallons; ounces and pounds). Readings persist to <code>localStorage</code> under the key <code>pumproom.v1</code>, so a closed tab or a dead tablet loses nothing.</p>
+
+      <figure>
+        <img loading="lazy" src="/blog/img/PLACEHOLDER-pumproom-dosing-ui.png" alt="Pump Room main screen showing pool selector, readings grid, LSI gauge, and dose cards">
+        <figcaption>The main screen: body-of-water selector, the test-kit readings grid, the LSI gauge, and one dose card per parameter. Placeholder pending a real screenshot.</figcaption>
+      </figure>
+
+      <p>The <strong>Copy log line</strong> button formats the current readings and the computed LSI into a single text line, timestamped and prefixed with the body of water, ready to paste into DigiQuatics once back in range:</p>
+      <pre><code>Competition Pool — 07/08 2:14 PM — FC 2.4 / pH 7.6 / TA 90 / CH 300 / CYA 30 / 80°F / LSI -0.03</code></pre>
+
+      <h2>The math</h2>
+      <h3>Saturation index</h3>
+      <p>Water balance uses the Langelier Saturation Index with a cyanuric-acid correction to the carbonate alkalinity [2]:</p>
+      <pre><code>LSI = pH + TF(temp) + log10(CH) - 0.4 + log10(max(1, TA - CYA/3)) - 12.1</code></pre>
+      <p>The constant <code>12.1</code> assumes total dissolved solids under 1000&nbsp;ppm. <code>TF(temp)</code> is the standard temperature factor, looked up from a ten-point table spanning 32&nbsp;°F to 105&nbsp;°F and interpolated linearly between breakpoints. The gauge reads corrosive below &minus;0.3, balanced within &plusmn;0.3, and scale-forming above +0.3.</p>
+
+      <details>
+        <summary>The temperature-factor breakpoints</summary>
+        <pre><code>°F    TF
+ 32   0.0
+ 37   0.1
+ 46   0.2
+ 53   0.3
+ 60   0.4
+ 66   0.5
+ 76   0.6
+ 84   0.7
+ 94   0.8
+105   0.9</code></pre>
+        <p>Values between two breakpoints are interpolated linearly; below 32&nbsp;°F the factor is held at 0.0 and above 105&nbsp;°F at 0.9.</p>
+      </details>
+
+      <h3>Dosing</h3>
+      <p>Every dose is scaled from a per-10,000-gallon constant to the selected body's volume. The engine covers five parameters:</p>
+      <ul>
+        <li><strong>Free chlorine</strong> — liquid chlorine 12.5%, cal-hypo 65% and 73%, dichlor, or trichlor. Stabilized chlorines carry a warning showing the cyanuric acid they add. Above 10&nbsp;ppm the card switches to a sodium thiosulfate neutralization amount (or advises holding to let it burn down).</li>
+        <li><strong>pH</strong> — muriatic acid or dry acid to lower, soda ash to raise. The acid dose is scaled by the measured total alkalinity (the buffer resisting the change), and large corrections prompt a staged-dosing note.</li>
+        <li><strong>Total alkalinity</strong> — sodium bicarbonate to raise, muriatic acid to lower, with a note that lowering TA also drops pH.</li>
+        <li><strong>Calcium hardness</strong> — calcium chloride to raise; when hardness is far over target the card reports a drain-and-refill percentage instead, because no chemical lowers it.</li>
+        <li><strong>Cyanuric acid</strong> — stabilizer to raise; dilution-only when over, since CYA does not degrade.</li>
+      </ul>
+
+      <h3>Hazard banner</h3>
+      <p>The striped banner fires when free chlorine is below the selected body's code minimum, when free chlorine exceeds 10&nbsp;ppm, or when pH falls outside 7.2&ndash;8.0. It names the specific breach and the corrective posture (for example, closing the body until chlorine is restored and retested).</p>
+
+      <h2>Editing the config</h2>
+      <p>All facility-specific numbers live at the top of the <code>&lt;script&gt;</code> block, so re-tuning the tool for a different site is a matter of editing data, not logic. The <code>POOLS</code> array holds each body's volume, code free-chlorine minimum, and default targets:</p>
+      <pre><code>const POOLS = [
+  { id:"comp", name:"Competition Pool", gal:315643, minFC:2.0,
+    targets:{ fc:3.0, ph:7.5, ta:90, ch:300, cya:30 } },
+  // ...instructional, splash pad, spa
+];</code></pre>
+      <p>The chemical products and their per-10,000-gallon strengths are in the <code>CHLOR</code> and <code>ACID</code> arrays; the remaining reagent constants (soda ash, bicarbonate, calcium chloride, stabilizer, thiosulfate) are in the <code>K</code> object; the temperature factors are in <code>TF_TABLE</code>. Change the numbers there and every dose re-scales automatically.</p>
+
+      <h2>Limitations</h2>
+      <ul>
+        <li>Doses are <strong>field estimates</strong>. The tool assumes even mixing and a single turnover between dose and retest; it does not model demand, sunlight burn-off, or bather load. Dose in stages (no more than a third of a large pH or acid correction at once), keep circulation running, and retest.</li>
+        <li>The LSI constant assumes TDS under 1000&nbsp;ppm. Salt pools and older water will read slightly off; the tool does not take a TDS input.</li>
+        <li>Code thresholds are seeded to California Title 22 / county minimums [3]. They are a starting point, not a substitute for the facility's own permit — verify the numbers in <code>POOLS</code> against it.</li>
+        <li>It is a calculator, not a controller. It reads nothing from the pool and actuates nothing; the operator still tests the water and adds the chemicals.</li>
+      </ul>
+
+      <section>
+        <h2>References</h2>
+        <ol>
+          <li><a href="../../tools/pumproom.html">Pump Room Chemistry Calculator</a></li>
+          <li>Langelier Saturation Index and the standard temperature/alkalinity factor methodology (Taylor water-balance convention).</li>
+          <li>California Code of Regulations, Title 22, Division 4, Chapter 20 (public pool water quality).</li>
+        </ol>
+      </section>
+    </article>
+  </main>
+
+  <footer>
+    <hr>
+    <p>This website's source code is open and available on <a href="https://github.com/mds08011/kimberlytravel">Github</a>.</p>
+  </footer>
+</body>
+</html>

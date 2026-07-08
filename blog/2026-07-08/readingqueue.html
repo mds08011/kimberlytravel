@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Capturing Chemical Readings Offline for Batch Entry</title>
+  <link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+  <header>
+    <nav>
+      <ul>
+        <li><a href="../../index.html">Home</a></li>
+        <li><a href="../../travelmap/">Travel Map</a></li>
+        <li><a href="../index.html">Blog</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <h1>Capturing Chemical Readings Offline for Batch Entry</h1>
+      <time datetime="2026-07-08">July 8, 2026</time>
+
+      <p>Reading Queue is the capture companion to Pump Room. It is a single-file, offline form that records chemical readings taken where there is no signal, holds them in a local queue, and then copies them out — one row at a time, or the whole pending block at once — for entry into DigiQuatics once back in range. It can also export the queue as CSV [1].</p>
+
+      <h2>The problem</h2>
+      <p>Readings are taken in the pump room and on the deck, which is exactly where the connection drops. The logging system lives on the network. The gap between the two is usually bridged with a paper note or a phone photo, which then has to be transcribed later from memory of which reading came from which body of water at what time. Reading Queue closes that gap: the reading is captured in structured form at the moment it is taken, validated on the spot, and stored on the device until it can be entered.</p>
+
+      <h2>How it works</h2>
+      <p>The capture form takes a body of water, a time, free chlorine, pH, temperature, flow, and initials. The time defaults to now but stays editable, so a reading can be backfilled. As values are typed, the free-chlorine and pH fields border red on the same thresholds Pump Room enforces — below the body's minimum, over 10&nbsp;ppm free chlorine, or pH outside 7.2&ndash;8.0 — so an out-of-code reading is visible before it is even queued.</p>
+
+      <figure>
+        <img loading="lazy" src="/blog/img/PLACEHOLDER-readingqueue-capture.png" alt="Reading Queue capture form with a red-bordered out-of-range field and the queue ledger below">
+        <figcaption>The capture form with live field validation, above the queue ledger. Placeholder pending a real screenshot.</figcaption>
+      </figure>
+
+      <p>Each queued reading shows a status dot — green for clean, red with a <strong>VIOLATION</strong> flag for a breach — plus per-row actions:</p>
+      <ul>
+        <li><strong>Copy</strong> (&#x29C9;) formats that single reading as a text line.</li>
+        <li><strong>Mark entered</strong> (&#x2713;) dims the row without deleting it, so there is a record of what has already been keyed in.</li>
+        <li><strong>Delete</strong> (&#x2715;) removes it.</li>
+      </ul>
+      <p><strong>Copy all pending</strong> batches every row not yet marked entered into one block. A copied line looks like:</p>
+      <pre><code>Competition Pool — 07/08 2:14 PM — FC 2.4 / pH 7.6 / 80°F / 240 GPM / MK  ⚠ FC below 2 ppm min</code></pre>
+
+      <h2>The CSV export</h2>
+      <p>The export writes a fixed ten-column schema:</p>
+      <pre><code>date,time,pool,free_cl_ppm,ph,temp_f,flow_gpm,initials,violation,entered</code></pre>
+      <p>The file is generated entirely in the browser — a <code>Blob</code> passed to <code>URL.createObjectURL()</code> and clicked as a download, with no server round-trip. It is prefixed with a UTF-8 byte-order mark so that Excel opens it with the correct encoding, and fields containing commas, quotes, or newlines are quote-escaped. The CSV is the backup: the queue lives only in this browser, under its own <code>localStorage</code> key (<code>readingqueue.v1</code>, separate from Pump Room's), so exporting is how a record leaves the device.</p>
+
+      <h2>Editing the config</h2>
+      <p>The bodies of water and their code minimums are the <code>POOLS</code> array at the top of the <code>&lt;script&gt;</code> block; the shared limits are the constants beside it:</p>
+      <pre><code>const MAX_FC = 10, PH_LO = 7.2, PH_HI = 8.0;</code></pre>
+      <p>The captured fields themselves are the <code>FIELDS</code> array, so adding or removing a measured value is a one-line change there. Keep the pool list identical to Pump Room's if the two tools are meant to agree.</p>
+
+      <h2>Limitations</h2>
+      <ul>
+        <li>The queue is stored per-device and per-browser. It does not sync between the deck tablet and the office computer — the CSV or a copy-paste is the transfer mechanism, by design.</li>
+        <li>Validation flags a breach; it does not stop it. A red-flagged reading means the water needs correcting first — the tool exists to log it, not to make an out-of-code reading acceptable because it was recorded.</li>
+        <li>Clearing all readings is guarded by a confirmation prompt, but there is no undo. Export before a bulk clear if the record matters.</li>
+      </ul>
+
+      <section>
+        <h2>References</h2>
+        <ol>
+          <li><a href="../../tools/readingqueue.html">Reading Queue</a></li>
+          <li><a href="../../tools/pumproom.html">Pump Room Chemistry Calculator</a> — the dosing companion that shares the same pool list and thresholds.</li>
+        </ol>
+      </section>
+    </article>
+  </main>
+
+  <footer>
+    <hr>
+    <p>This website's source code is open and available on <a href="https://github.com/mds08011/kimberlytravel">Github</a>.</p>
+  </footer>
+</body>
+</html>
