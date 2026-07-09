@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>A Read-Only Facility Status Board for a Wall Tablet</title>
+  <link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+  <header>
+    <nav>
+      <ul>
+        <li><a href="../../index.html">Home</a></li>
+        <li><a href="../../travelmap/">Travel Map</a></li>
+        <li><a href="../index.html">Blog</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <h1>A Read-Only Facility Status Board for a Wall Tablet</h1>
+      <time datetime="2026-07-01">July 2026</time>
+
+      <p>Status Board is a kiosk display for a wall-mounted tablet: the latest water chemistry per pool with reading age, chemical stock status with reorder flags, the current lifeguard rotation block, and — dominating everything when active — a live countdown banner for a contamination hold. It has no buttons, takes no input, re-reads its sources every 60 seconds, and writes nothing, ever [1].</p>
+
+      <h2>The problem</h2>
+      <p>The aquatics suite accumulates operational state across five tools — last readings, tank levels, the rotation grid, an incident hold — and each lives inside its own page. Answering "is everything OK right now" means opening five tabs. A status board is the standing answer: one glance from across the office, no interaction, current within a minute. The design constraint that matters is that it must be incapable of changing anything — a kiosk that can be poked into editing state is a liability on a wall.</p>
+
+      <h2>How it works</h2>
+      <p>Four sections, each reading one or two of the suite's <code>localStorage</code> keys and each degrading independently to an honest "no data" message when its source is absent:</p>
+      <ul>
+        <li><strong>Water chemistry tiles</strong> — one per pool, showing FC/pH/temp from the most recent reading across Pump Room and Reading Queue (timestamps compared, newest wins, source named). The age renders beside it ("45 min ago"); a reading older than 4 hours turns the tile amber, and values breaching the source tools' own FC/pH thresholds render red.</li>
+        <li><strong>Chemical stock</strong> — the four mini tank gauges with status: days left, an order-by date, or ORDER NOW.</li>
+        <li><strong>Current rotation</strong> — the block of the rotation grid whose time window contains now, as station:guard chips plus breaks; otherwise "no grid built", "shift starts at…", or "shift over".</li>
+        <li><strong>Contamination hold</strong> — if a disinfection hold is running, a full-width hazard-stripe banner with the live countdown and reopen time sits above everything; when the hold completes it flips green with a "verify before reopening" line.</li>
+      </ul>
+
+      <figure>
+        <img loading="lazy" src="/kimberlytravel/blog/img/PLACEHOLDER-statusboard-kiosk.png" alt="Status Board showing four pool chemistry tiles, tank gauges, the current rotation block, and the as-of stamp">
+        <figcaption>The kiosk layout: chemistry tiles with age and violation states, stock gauges, and the current rotation block. Placeholder pending a real screenshot.</figcaption>
+      </figure>
+
+      <p>A small "as of HH:MM" stamp in the header shows the last refresh; the full re-read runs every 60 seconds (the hold countdown ticks every second). Pump Room's last-edit stamps are parsed defensively — a reading whose age can't be established still displays, marked "age unknown", rather than being hidden.</p>
+
+      <h2>The math</h2>
+      <p>The only real computation is the chemical stock forecast, and it is deliberately not new math: Chem Stock's <code>analyze()</code> — the trailing 45-day consumption window, the 5%-of-capacity delivery detection, the noise tolerance, the 3-day safety buffer and 7-day "order soon" window — is reimplemented with identical constants [2]. A parity test guards the duplication: the board's implementation and Chem Stock's own function (extracted from its file at test time) were run against a shared fixture series containing a steady burn, one delivery, and one sub-threshold noise blip, asserting identical rate, status, days-to-empty, reorder-by date, and delivery flags across all four products.</p>
+
+      <h2>Editing the config</h2>
+      <p>Everything shared sits at the top of the <code>&lt;script&gt;</code> block and must be kept in sync with its source tool: <code>POOLS</code> (volumes and FC minimums, from Pump Room), the FC/pH thresholds, <code>PRODUCTS</code> and the four forecast constants (from Chem Stock), and <code>STALE_H</code> — the 4-hour amber threshold, which is the board's only original opinion.</p>
+
+      <h2>Limitations</h2>
+      <ul>
+        <li><strong><code>localStorage</code> is per-device — this is the architectural boundary, not a bug.</strong> The board reflects the tablet it runs on. If readings are logged on the deck tablet, the board on the office wall shows nothing. Either mount the logging tablet as the board, or accept CSV-era staleness on a second device. Nothing in a zero-server design can bridge two browsers' storage.</li>
+        <li>Reading age from Pump Room relies on parsing its human-format edit stamp; an unparseable stamp degrades to "age unknown" rather than a fabricated time. Reading Queue timestamps are exact.</li>
+        <li>The board trusts its sources' schemas (<code>pumproom.v1</code>, <code>readingqueue.v1</code>, <code>chemstock.v1</code>, <code>rotationgrid.v1</code>, <code>contamination.v1</code>). A future schema change in a source tool means updating the board's reader.</li>
+        <li>It is not a compliance record. It renders the latest state; the logs, exports, and incident records live in the tools that own them.</li>
+      </ul>
+
+      <section>
+        <h2>References</h2>
+        <ol>
+          <li><a href="../../tools/statusboard.html">Facility Status Board</a></li>
+          <li><a href="../../tools/chemstock.html">Chem Stock Forecaster</a> — the source of the parity-tested burn-rate math.</li>
+        </ol>
+      </section>
+    </article>
+  </main>
+
+  <footer>
+    <hr>
+    <p>This website's source code is open and available on <a href="https://github.com/mds08011/kimberlytravel">Github</a>.</p>
+  </footer>
+</body>
+</html>

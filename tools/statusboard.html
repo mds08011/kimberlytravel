@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<!--
+  STATUS BOARD — Facility Kiosk Display
+  v1.0.0 · 2026-07-09
+  Aquatics suite. Single-file, offline, zero dependencies. READ-ONLY:
+  renders the latest state written by pumproom.html, readingqueue.html,
+  chemstock.html, rotation.html, and contamination.html on THIS device's
+  localStorage, and never writes any of their keys (it writes nothing at all).
+  Wall-tablet use: no buttons, big type, re-reads every 60 s.
+  chemstock's analyze() burn-rate math is reimplemented here with IDENTICAL
+  constants; a parity test holds the two implementations equal.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#10181d">
+<title>Status Board — Facility Kiosk</title>
+<style>
+  :root{
+    --bg:#10181d; --panel:#17232b; --panel2:#1c2a34; --line:#2a3b46;
+    --ink:#e9f1f4; --dim:#8ba1ac; --faint:#5d7280;
+    --water:#46c8dd; --chlor:#f2c53d; --acid:#e5534b; --ok:#55c98c;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);
+    font-size:clamp(15px,1.5vw,19px);line-height:1.4;
+    padding:0 18px calc(24px + env(safe-area-inset-bottom))}
+  .wrap{max-width:1100px;margin:0 auto}
+
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+    padding:16px 2px 10px;border-bottom:1px solid var(--line)}
+  h1{font-size:clamp(1rem,2vw,1.3rem);font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+  h1 .tick{color:var(--water)}
+  header .stamp{font-family:var(--mono);font-size:clamp(.7rem,1.2vw,.85rem);color:var(--faint)}
+
+  .microlabel{font-size:clamp(.6rem,1vw,.72rem);font-weight:700;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--dim)}
+  section{margin-top:16px}
+  .sechead{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+  .sechead::after{content:"";flex:1;height:1px;background:var(--line)}
+
+  /* contamination banner — dominates everything */
+  .hold{display:none;margin-top:14px;border:2px solid var(--acid);border-radius:14px;
+    background:var(--panel);overflow:hidden}
+  .hold.show{display:block}
+  .hold.done{border-color:var(--ok)}
+  .hold .stripe{height:12px;
+    background:repeating-linear-gradient(-45deg,var(--chlor) 0 14px,#0e1418 14px 28px)}
+  .hold.done .stripe{background:repeating-linear-gradient(-45deg,var(--ok) 0 14px,#0e1418 14px 28px)}
+  .hold .body{display:flex;align-items:center;gap:22px;padding:14px 20px;flex-wrap:wrap}
+  .hold .what{flex:1;min-width:220px}
+  .hold .what .t1{font-weight:800;font-size:clamp(1rem,2.2vw,1.4rem);color:var(--acid);
+    letter-spacing:.08em;text-transform:uppercase}
+  .hold.done .what .t1{color:var(--ok)}
+  .hold .what .t2{color:var(--dim);font-size:clamp(.8rem,1.4vw,.95rem);margin-top:2px}
+  .hold .clock{font-family:var(--mono);font-size:clamp(2rem,5vw,3.4rem);font-weight:700;color:var(--chlor)}
+  .hold.done .clock{color:var(--ok)}
+
+  /* pool tiles */
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}
+  .tile{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .tile.stale{border-color:var(--chlor)}
+  .tile.viol{border-color:var(--acid)}
+  .tile .tname{font-weight:700;font-size:clamp(.9rem,1.6vw,1.1rem)}
+  .tile .vals{display:flex;gap:18px;margin-top:8px;flex-wrap:wrap}
+  .tile .v{font-family:var(--mono)}
+  .tile .v .n{font-size:clamp(1.4rem,3vw,2rem);font-weight:700;color:var(--water)}
+  .tile .v .n.bad{color:var(--acid)}
+  .tile .v .u{display:block;font-size:clamp(.58rem,1vw,.68rem);letter-spacing:.14em;
+    text-transform:uppercase;color:var(--dim);margin-top:1px}
+  .tile .age{font-family:var(--mono);font-size:clamp(.68rem,1.2vw,.8rem);color:var(--faint);margin-top:8px}
+  .tile.stale .age{color:var(--chlor)}
+  .tile .none{color:var(--faint);font-size:.9em;margin-top:8px}
+
+  /* chem stock row */
+  .stock{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+  .prod{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:10px 12px;display:flex;gap:12px;align-items:center}
+  .prod.now{border-color:var(--acid)}
+  .prod.soon{border-color:var(--chlor)}
+  .prod .mini{flex:none;width:22px;height:52px;border:1.5px solid var(--line);
+    border-radius:4px 4px 5px 5px;position:relative;overflow:hidden;background:var(--bg)}
+  .prod .mini .fill{position:absolute;left:0;right:0;bottom:0;background:var(--water)}
+  .prod.now .mini .fill{background:var(--acid)}
+  .prod.soon .mini .fill{background:var(--chlor)}
+  .prod .meta{flex:1;min-width:0}
+  .prod .pname{font-weight:700;font-size:clamp(.75rem,1.3vw,.9rem);line-height:1.25}
+  .prod .pstat{font-family:var(--mono);font-size:clamp(.68rem,1.2vw,.8rem);margin-top:3px;color:var(--dim)}
+  .prod.ok .pstat{color:var(--ok)} .prod.soon .pstat{color:var(--chlor)}
+  .prod.now .pstat{color:var(--acid);font-weight:700}
+
+  /* rotation */
+  .rot{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .rot .rhead{font-family:var(--mono);font-size:clamp(.72rem,1.3vw,.85rem);color:var(--dim);margin-bottom:8px}
+  .rot .rhead b{color:var(--water)}
+  .assign{display:flex;gap:8px;flex-wrap:wrap}
+  .as{background:var(--panel2);border:1px solid var(--line);border-radius:999px;
+    padding:7px 14px;font-size:clamp(.8rem,1.5vw,1rem)}
+  .as .st{color:var(--dim);font-size:.85em}
+  .as b{color:var(--ink)}
+  .as.brk{border-color:#3a5060}
+  .as.brk .st{color:var(--faint)}
+  .none{color:var(--faint)}
+
+  footer{margin-top:20px;border-top:1px solid var(--line);padding-top:10px;
+    font-size:clamp(.62rem,1.1vw,.74rem);color:var(--faint);line-height:1.6}
+  footer code{font-family:var(--mono)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1><span class="tick">▮</span> Facility Status</h1>
+    <span class="stamp" id="asOf"></span>
+  </header>
+
+  <div class="hold" id="hold" role="alert">
+    <div class="stripe"></div>
+    <div class="body">
+      <div class="what">
+        <div class="t1" id="holdT1"></div>
+        <div class="t2" id="holdT2"></div>
+      </div>
+      <div class="clock" id="holdClock"></div>
+    </div>
+  </div>
+
+  <section aria-label="Water chemistry">
+    <div class="sechead"><span class="microlabel">Latest Water Chemistry</span></div>
+    <div class="tiles" id="tiles"></div>
+  </section>
+
+  <section aria-label="Chemical stock">
+    <div class="sechead"><span class="microlabel">Chemical Stock</span></div>
+    <div class="stock" id="stock"></div>
+  </section>
+
+  <section aria-label="Rotation">
+    <div class="sechead"><span class="microlabel">Current Rotation</span></div>
+    <div class="rot" id="rot"></div>
+  </section>
+
+  <footer>
+    Read-only board: renders what <b>Pump Room</b>, <b>Reading Queue</b>, <b>Chem Stock</b>,
+    <b>Rotation Grid</b>, and <b>Contamination Response</b> last saved on <i>this device's</i>
+    <code>localStorage</code> — it writes nothing, and a section with no source data says so.
+    Amber tile = reading older than 4 h. Red values breach the same FC/pH thresholds the source
+    tools enforce. Refreshes every 60 s.
+  </footer>
+</div>
+
+<script>
+"use strict";
+/* ============ CONFIG (shared with the source tools — keep in sync) ============ */
+const POOLS = [
+  { id:"comp",   name:"Competition Pool",   gal:315643, minFC:2.0 },
+  { id:"inst",   name:"Instructional Pool", gal:84200,  minFC:2.0 },
+  { id:"splash", name:"Splash Pad",         gal:4100,   minFC:3.0 },
+  { id:"spa",    name:"Spa",                gal:2000,   minFC:3.0 },
+];
+const MAX_FC = 10, PH_LO = 7.2, PH_HI = 8.0;
+const STALE_H = 4;                       // reading age that renders amber
+/* chemstock.html constants — IDENTICAL values, parity-tested */
+const PRODUCTS = [
+  { id:"naocl",   name:"Liquid Chlorine 12.5%", unit:"gal", capacity:500, leadDays:5 },
+  { id:"ma",      name:"Muriatic Acid 31.45%",  unit:"gal", capacity:110, leadDays:5 },
+  { id:"calhypo", name:"Cal-Hypo 65%",          unit:"lb",  capacity:400, leadDays:7 },
+  { id:"cya",     name:"Cyanuric Acid",         unit:"lb",  capacity:200, leadDays:7 },
+];
+const SAFETY_DAYS = 3, SOON_DAYS = 7, WINDOW_DAYS = 45, NOISE_FRAC = 0.05;
+const DAY = 864e5;
+const INCIDENT_NAMES = { formed:"Formed stool / vomit", diarrheal:"Diarrheal (Crypto)" };
+
+const $   = id => document.getElementById(id);
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const num = v => { const n=parseFloat(v); return Number.isFinite(n) ? n : null; };
+const r1  = x => Math.round(x*10)/10;
+
+/* ============ read-only source readers (each degrades to null) ============ */
+function readKey(key, check){
+  try{
+    const raw = localStorage.getItem(key);
+    if(!raw) return null;
+    const p = JSON.parse(raw);
+    return (p && check(p)) ? p : null;
+  }catch(e){ return null; }
+}
+const srcPump  = () => readKey("pumproom.v1",     p=>!!p.pools);
+const srcQueue = () => readKey("readingqueue.v1", p=>Array.isArray(p.q));
+const srcStock = () => readKey("chemstock.v1",    p=>!!p.hist);
+const srcRot   = () => readKey("rotationgrid.v1", p=>Array.isArray(p.guards));
+const srcCont  = () => readKey("contamination.v1",p=>"hold" in p);
+
+/* ============ latest reading per pool (queue vs pumproom, newest wins) ============ */
+/* queue rows: iso capture date + editable HH:MM time field */
+function queueMs(iso, hhmm){
+  const d = new Date(iso);
+  if(isNaN(d)) return null;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm||"");
+  if(m) d.setHours(+m[1], +m[2], 0, 0);
+  return d.getTime();
+}
+/* pumproom stamps are toLocaleString month/day + time, e.g. "7/8, 2:14 PM" */
+function parseStamp(stamp){
+  const m = /^(\d{1,2})\/(\d{1,2}),?\s+(\d{1,2}):(\d{2})\s*([AP]M)?$/i.exec(String(stamp||"").trim());
+  if(!m) return null;
+  let h = +m[3];
+  if(m[5]){ const pm = m[5].toUpperCase()==="PM"; if(pm && h<12) h+=12; if(!pm && h===12) h=0; }
+  let d = new Date(new Date().getFullYear(), +m[1]-1, +m[2], h, +m[4]);
+  if(isNaN(d) || d.getMonth() !== m[1]-1) return null;
+  if(d.getTime() > Date.now()+DAY) d = new Date(d.getFullYear()-1, +m[1]-1, +m[2], h, +m[4]);
+  return d.getTime();
+}
+function latestFor(poolId, pump, queue){
+  let best = null;   // {t (ms|null), fc, ph, temp, src}
+  if(queue){
+    for(const r of queue.q){
+      if(r.poolId!==poolId) continue;
+      const t = queueMs(r.iso, r.time);
+      if(t==null) continue;
+      if(!best || t > best.t) best = { t, fc:num(r.fc), ph:num(r.ph), temp:num(r.temp), src:"queue" };
+    }
+  }
+  if(pump && pump.pools && pump.pools[poolId]){
+    const ps = pump.pools[poolId], r = ps.r||{};
+    const has = ["fc","ph","temp"].some(k=>num(r[k])!=null);
+    if(has){
+      const t = parseStamp(ps.stamp);
+      const cand = { t, fc:num(r.fc), ph:num(r.ph), temp:num(r.temp), src:"pump room" };
+      if(!best) best = cand;
+      else if(t!=null && t > best.t) best = cand;
+    }
+  }
+  return best;
+}
+function violations(v, pool){
+  const out = { fc:false, ph:false };
+  if(v.fc!=null && (v.fc < pool.minFC || v.fc > MAX_FC)) out.fc = true;
+  if(v.ph!=null && (v.ph < PH_LO || v.ph > PH_HI)) out.ph = true;
+  return out;
+}
+function agoText(ms){
+  if(ms==null) return "age unknown";
+  const min = Math.max(0, Math.round((Date.now()-ms)/60000));
+  if(min < 60) return min+" min ago";
+  const h = min/60;
+  if(h < 48) return (Math.round(h*10)/10)+" h ago";
+  return Math.round(h/24)+" d ago";
+}
+
+/* ============ burn-rate math — reimplementation of chemstock.html analyze()
+   with IDENTICAL constants and logic (parity-tested against the original) ==== */
+function sbAnalyze(p, histRows){
+  const rows = (histRows||[]).slice().sort((a,b)=>new Date(a.iso)-new Date(b.iso));
+  const cutoff = Date.now() - WINDOW_DAYS*DAY;
+  const win = rows.filter(r=>new Date(r.iso).getTime() >= cutoff);
+  const noise = p.capacity*NOISE_FRAC;
+  let consumed=0, days=0;
+  const deliveryIso = new Set();
+  for(let i=1;i<win.length;i++){
+    const d  = win[i-1].level - win[i].level;
+    const dt = (new Date(win[i].iso) - new Date(win[i-1].iso))/DAY;
+    if(dt<=0) continue;
+    if(d >= 0){ consumed += d; days += dt; }
+    else if(-d < noise){ days += dt; }
+    else deliveryIso.add(win[i].iso);
+  }
+  const last = rows.length ? rows[rows.length-1] : null;
+  const rate = (days > 0.5 && consumed > 0) ? consumed/days : null;
+  let daysLeft=null, emptyAt=null, reorderBy=null, status="none";
+  if(last && rate){
+    daysLeft  = last.level/rate;
+    emptyAt   = new Date(new Date(last.iso).getTime() + daysLeft*DAY);
+    reorderBy = new Date(emptyAt.getTime() - (p.leadDays+SAFETY_DAYS)*DAY);
+    const now = Date.now();
+    status = now >= reorderBy.getTime() ? "now"
+           : now >= reorderBy.getTime() - SOON_DAYS*DAY ? "soon" : "ok";
+  } else if(last){ status = "logging"; }
+  return { rows, last, rate, daysLeft, emptyAt, reorderBy, status, deliveryIso };
+}
+
+/* ============ render ============ */
+function renderHold(){
+  const c = srcCont(), el = $("hold");
+  if(!c || !c.hold){ el.classList.remove("show"); return false; }
+  const h = c.hold;
+  const total = h.reqMin*60000, left = h.startMs + total - Date.now();
+  const poolName = (POOLS.find(p=>p.id===h.pool)||{}).name || h.pool;
+  const typeName = INCIDENT_NAMES[h.type] || h.type;
+  el.classList.add("show");
+  el.classList.toggle("done", left<=0);
+  if(left<=0){
+    $("holdT1").textContent = "DISINFECTION HOLD COMPLETE";
+    $("holdT2").textContent = poolName+" — "+typeName+" — verify FC/pH before reopening";
+    $("holdClock").textContent = "00:00:00";
+  } else {
+    const s=Math.floor(left/1000), p2=n=>String(n).padStart(2,"0");
+    $("holdT1").textContent = "POOL CLOSED — DISINFECTION HOLD";
+    $("holdT2").textContent = poolName+" — "+typeName+" — reopen at "+
+      new Date(h.startMs+total).toLocaleString([],{weekday:"short",hour:"numeric",minute:"2-digit"});
+    $("holdClock").textContent = p2(Math.floor(s/3600))+":"+p2(Math.floor((s%3600)/60))+":"+p2(s%60);
+  }
+  return left>0;
+}
+function renderTiles(){
+  const pump = srcPump(), queue = srcQueue();
+  $("tiles").innerHTML = POOLS.map(p=>{
+    const v = latestFor(p.id, pump, queue);
+    if(!v) return '<div class="tile"><div class="tname">'+esc(p.name)+'</div>'+
+      '<div class="none">no data — log a reading in Pump Room or Reading Queue</div></div>';
+    const vio = violations(v, p);
+    const stale = v.t==null || (Date.now()-v.t) > STALE_H*3600000;
+    const cell = (val,unit,bad)=> '<span class="v"><span class="n'+(bad?" bad":"")+'">'+
+      (val==null?"—":val)+'</span><span class="u">'+unit+'</span></span>';
+    return '<div class="tile'+(vio.fc||vio.ph?" viol":stale?" stale":"")+'">'+
+      '<div class="tname">'+esc(p.name)+'</div>'+
+      '<div class="vals">'+cell(v.fc,"FC ppm",vio.fc)+cell(v.ph,"pH",vio.ph)+cell(v.temp,"°F",false)+'</div>'+
+      '<div class="age">'+agoText(v.t)+' · '+v.src+'</div></div>';
+  }).join("");
+}
+function renderStock(){
+  const st = srcStock();
+  if(!st){
+    $("stock").innerHTML = '<div class="prod"><span class="none">no data — Chem Stock has no readings on this device</span></div>';
+    return;
+  }
+  $("stock").innerHTML = PRODUCTS.map(p=>{
+    const a = sbAnalyze(p, st.hist[p.id]);
+    const frac = a.last ? Math.min(1, Math.max(0, a.last.level/p.capacity)) : 0;
+    let stat;
+    if(a.status==="none") stat = "no readings";
+    else if(a.status==="logging") stat = "logging";
+    else if(a.status==="now") stat = "ORDER NOW";
+    else if(a.status==="soon") stat = "order by "+a.reorderBy.toLocaleDateString([],{month:"2-digit",day:"2-digit"});
+    else stat = r1(a.daysLeft)+" days left";
+    return '<div class="prod '+a.status+'">'+
+      '<span class="mini"><span class="fill" style="height:'+Math.round(frac*100)+'%"></span></span>'+
+      '<span class="meta"><span class="pname">'+esc(p.name)+'</span>'+
+      '<span class="pstat">'+esc(stat)+'</span></span></div>';
+  }).join("");
+}
+function renderRotation(){
+  const rot = srcRot();
+  if(!rot || !rot.grid || !rot.grid.rows || !rot.grid.rows.length){
+    $("rot").innerHTML = '<span class="none">no grid built</span>'; return;
+  }
+  const g = rot.grid, d = new Date(), nowMin = d.getHours()*60 + d.getMinutes();
+  const row = g.rows.find(r=>r.startMin <= nowMin && nowMin < r.startMin + g.interval);
+  const t12 = min => {
+    min=((min%1440)+1440)%1440;
+    const h=Math.floor(min/60), m=min%60, ap=h>=12?"PM":"AM";
+    return ((h+11)%12+1)+":"+String(m).padStart(2,"0")+" "+ap;
+  };
+  if(!row){
+    const first=g.rows[0], last=g.rows[g.rows.length-1];
+    $("rot").innerHTML = '<span class="none">'+(nowMin < first.startMin
+      ? "shift starts at "+t12(first.startMin)
+      : "shift over (ended "+t12(last.startMin+g.interval)+")")+'</span>';
+    return;
+  }
+  const chips = Object.entries(row.cells).map(([st,gd])=>
+    '<span class="as"><span class="st">'+esc(st)+':</span> <b>'+esc(gd)+'</b></span>').join("")
+    + (row.breaks.length ? '<span class="as brk"><span class="st">Break:</span> <b>'+row.breaks.map(esc).join(", ")+'</b></span>' : "");
+  $("rot").innerHTML = '<div class="rhead">block <b>'+t12(row.startMin)+' – '+t12(row.startMin+g.interval)+
+    '</b> · built '+esc(g.builtStamp||"")+'</div><div class="assign">'+chips+'</div>';
+}
+
+/* ============ refresh loops ============ */
+let holdTick = null;
+function renderAll(){
+  const running = renderHold();
+  renderTiles(); renderStock(); renderRotation();
+  $("asOf").textContent = "as of "+new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
+  clearInterval(holdTick);
+  if(running) holdTick = setInterval(renderHold, 1000);   // live countdown at 1 Hz
+}
+setInterval(renderAll, 60000);                            // full re-read every 60 s
+document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) renderAll(); });
+renderAll();
+</script>
+</body>
+</html>
