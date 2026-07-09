@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Exploring the Langelier Saturation Index Interactively</title>
+  <link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+  <header>
+    <nav>
+      <ul>
+        <li><a href="../../index.html">Home</a></li>
+        <li><a href="../../travelmap/">Travel Map</a></li>
+        <li><a href="../index.html">Blog</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <h1>Exploring the Langelier Saturation Index Interactively</h1>
+      <time datetime="2026-07-01">July 2026</time>
+
+      <p>LSI Explorer is a training tool: six live sliders (pH, temperature, calcium hardness, alkalinity, CYA, and a TDS toggle) drive the same saturation-index gauge Pump Room renders, alongside a signed bar chart that shows each factor term of the formula. Drag one slider and watch which bar moves and where the needle goes — cause and effect, not a lookup [1].</p>
+
+      <h2>The problem</h2>
+      <p>The LSI is the piece of pool chemistry most often used as a black box. An operator learns that the gauge said "corrosive" and that adding bicarb fixed it, without ever seeing <em>why</em> — which of the five terms was dragging the sum down, or why the same pH reading balances one pool and etches another. That intuition is hard to build on live water, where changing one parameter takes chemicals and an hour of circulation. On sliders it takes a second, and the contribution chart shows exactly which term moved.</p>
+
+      <h2>How it works</h2>
+      <p>Five sliders cover the working ranges (pH 6.8–8.4, temp 60–106 °F, CH 50–800, TA 20–300, CYA 0–150) with live monospace readouts; a toggle switches the TDS constant between the &lt;1000 and ≥1000 ppm cases. The gauge is the identical corrosive/balanced/scaling strip from Pump Room [2]. Below it, the contribution chart draws one signed horizontal bar per term — pH, the temperature factor, the calcium factor, the CYA-corrected alkalinity factor, and the negative TDS constant — with the LSI as their sum on the bottom row. Preset buttons load the four real pools' target chemistry, and <strong>Reset to balanced</strong> returns to a textbook-neutral starting point. Slider positions persist locally; the tool doses nothing.</p>
+
+      <figure>
+        <img loading="lazy" src="/kimberlytravel/blog/img/PLACEHOLDER-lsiexplorer-bars.png" alt="LSI Explorer showing the slider panel, the gauge needle in the balanced zone, and the signed contribution bars">
+        <figcaption>Sliders, the ported gauge, and the per-term contribution bars that sum to the index. Placeholder pending a real screenshot.</figcaption>
+      </figure>
+
+      <h2>The math</h2>
+      <pre><code>LSI = pH + TF(temp) + (log₁₀CH − 0.4) + log₁₀(max(1, TA − CYA/3)) − 12.1
+                                                              (−12.2 when TDS ≥ 1000)</code></pre>
+      <p><code>calcLSI()</code>, the temperature-factor table, and the gauge SVG are ported <strong>verbatim</strong> from Pump Room — not reimplemented — and a parity test holds them identical: both files' functions were run against 27 input combinations spanning the slider ranges plus the edge cases (32 °F floor, 105 °F ceiling, alkalinity floored at 1 by heavy CYA), asserting equal output to four decimals. The TDS toggle applies its −0.1 outside the ported function so the port stays byte-comparable.</p>
+      <p>The term worth teaching with the CYA slider: <code>TA − CYA/3</code>. Cyanurate contributes to a test kit's total-alkalinity reading but does not buffer calcium carbonate, so a third of the CYA reading is subtracted before the alkalinity factor is taken. Slide CYA up and the alkalinity bar shrinks with it — the visible version of "high stabilizer quietly un-balances your water."</p>
+
+      <h2>Editing the config</h2>
+      <p>Slider ranges and steps are the <code>SLIDERS</code> table at the top of the <code>&lt;script&gt;</code> block; the <code>PRESETS</code> array carries the four pools' target chemistry (from Pump Room's <code>POOLS</code> targets) and <code>BALANCED</code> is the reset point. The block marked <code>PORTED VERBATIM from pumproom.html</code> should never be edited independently — if the dosing calculator's math changes, re-port it.</p>
+
+      <h2>Limitations</h2>
+      <ul>
+        <li>It is a trainer, not a controller — it computes no doses and reads no live water. Pump Room remains the operational tool.</li>
+        <li>The formula assumes the standard Taylor factors; the TDS input is a two-state toggle (12.1 vs 12.2 constant), not a continuous correction.</li>
+        <li>The contribution bars share one scale, so the large stable terms (pH, the constant) dwarf the small mobile ones (temperature factor) — the numeric labels beside each bar carry the precision.</li>
+      </ul>
+
+      <section>
+        <h2>References</h2>
+        <ol>
+          <li><a href="../../tools/lsiexplorer.html">LSI Explorer</a></li>
+          <li><a href="../../tools/pumproom.html">Pump Room Chemistry Calculator</a> — the source of the ported <code>calcLSI()</code>, temperature-factor table, and gauge.</li>
+          <li>Langelier Saturation Index and temperature/alkalinity factor methodology (Taylor water-balance convention).</li>
+        </ol>
+      </section>
+    </article>
+  </main>
+
+  <footer>
+    <hr>
+    <p>This website's source code is open and available on <a href="https://github.com/mds08011/kimberlytravel">Github</a>.</p>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<!--
+  LSI EXPLORER — Interactive Saturation Index Trainer
+  v1.0.0 · 2026-07-09
+  Aquatics suite, companion to pumproom.html. Single-file, offline, zero deps.
+  Six live sliders drive the same LSI gauge pumproom renders, plus a signed
+  contribution-bar chart showing each factor term, so cause-and-effect between
+  a reading and the index is visible. Training prop — it doses nothing.
+  calcLSI(), tempFactor(), TF_TABLE, and the gauge SVG are ported VERBATIM from
+  pumproom.html (IDs adapted); a parity test holds them identical.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#10181d">
+<title>LSI Explorer — Saturation Index Trainer</title>
+<style>
+  :root{
+    --bg:#10181d; --panel:#17232b; --panel2:#1c2a34; --line:#2a3b46;
+    --ink:#e9f1f4; --dim:#8ba1ac; --faint:#5d7280;
+    --water:#46c8dd; --chlor:#f2c53d; --acid:#e5534b; --ok:#55c98c;
+    --scale:#b18cf2;   /* scale purple (Orenda convention, as pumproom) */
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;
+    line-height:1.45;padding:0 14px calc(28px + env(safe-area-inset-bottom))}
+  .wrap{max-width:760px;margin:0 auto}
+
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+    padding:18px 2px 12px;border-bottom:1px solid var(--line)}
+  h1{font-size:1.05rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+  h1 .tick{color:var(--water)}
+  header .ver{font-family:var(--mono);font-size:.7rem;color:var(--faint)}
+
+  .microlabel{font-size:.66rem;font-weight:700;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--dim)}
+  section{margin-top:20px}
+  .sechead{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .sechead::after{content:"";flex:1;height:1px;background:var(--line)}
+
+  /* sliders */
+  .sliders{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  @media(max-width:560px){.sliders{grid-template-columns:1fr}}
+  .sl{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+  .sl .top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+  .sl label{font-size:.64rem;font-weight:700;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--dim)}
+  .sl .val{font-family:var(--mono);font-size:1.05rem;font-weight:700;color:var(--water)}
+  .sl input[type=range]{width:100%;accent-color:var(--water);cursor:pointer}
+  .sl input[type=range]:focus-visible{outline:2px solid var(--water);outline-offset:2px}
+
+  .rowbtns{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center}
+  .btn{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink);
+    border-radius:8px;padding:9px 13px;font-size:.82rem;font-weight:600;cursor:pointer}
+  .btn:active{background:var(--panel2)}
+  .btn.primary{border-color:var(--water);color:var(--water)}
+  .btn:focus-visible,.seg button:focus-visible{outline:2px solid var(--water);outline-offset:2px}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{appearance:none;border:none;background:var(--panel);color:var(--dim);
+    padding:8px 13px;font-size:.8rem;font-weight:700;cursor:pointer}
+  .seg button[aria-pressed="true"]{background:var(--water);color:#0d2027}
+
+  /* gauge (suite pattern, ported from pumproom) */
+  .gauge-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .gauge-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+  .lsi-num{font-family:var(--mono);font-size:1.9rem;font-weight:700}
+  .lsi-word{font-size:.72rem;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+  .lsi-note{margin-top:8px;font-size:.8rem;color:var(--dim)}
+  svg{display:block;width:100%;height:auto}
+
+  /* contribution bars */
+  .contrib{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:10px}
+
+  footer{margin-top:26px;border-top:1px solid var(--line);padding-top:12px;
+    font-size:.74rem;color:var(--faint);line-height:1.6}
+  footer code{font-family:var(--mono)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1><span class="tick">▮</span> LSI Explorer</h1>
+    <span class="ver">saturation trainer · v1.0.0 · offline</span>
+  </header>
+
+  <section aria-label="Water parameters">
+    <div class="sechead"><span class="microlabel">Water Parameters</span></div>
+    <div class="sliders" id="sliders"></div>
+    <div class="rowbtns">
+      <span class="seg" role="group" aria-label="Total dissolved solids">
+        <button type="button" data-tds="lo" aria-pressed="true">TDS &lt; 1000</button>
+        <button type="button" data-tds="hi" aria-pressed="false">TDS ≥ 1000</button>
+      </span>
+      <button class="btn primary" id="resetBtn" type="button">Reset to balanced</button>
+      <span class="microlabel" style="margin-left:4px">presets:</span>
+      <span id="presets"></span>
+    </div>
+  </section>
+
+  <section aria-label="Saturation index">
+    <div class="sechead"><span class="microlabel">Saturation Index (LSI)</span></div>
+    <div class="gauge-card">
+      <div class="gauge-top">
+        <span class="lsi-num" id="lsiNum">—</span>
+        <span class="lsi-word" id="lsiWord"></span>
+      </div>
+      <svg id="gauge" viewBox="0 0 700 84" role="img" aria-label="LSI gauge from -1 to +1"></svg>
+      <div class="lsi-note" id="lsiNote"></div>
+    </div>
+  </section>
+
+  <section aria-label="Factor contributions">
+    <div class="sechead"><span class="microlabel">Where the Number Comes From</span></div>
+    <div class="contrib">
+      <svg id="bars" viewBox="0 0 700 210" role="img" aria-label="Signed contribution of each LSI factor"></svg>
+    </div>
+  </section>
+
+  <footer>
+    Training prop for the same math <b>Pump Room</b> runs:
+    <code>LSI = pH + TF(temp) + (log₁₀CH − 0.4) + log₁₀(max(1, TA − CYA/3)) − 12.1</code>
+    (−12.2 when TDS ≥ 1000 ppm). The <code>TA − CYA/3</code> term is the carbonate correction —
+    cyanurate alkalinity doesn't buffer calcium carbonate, so a third of the CYA reading is
+    subtracted from TA before its factor is taken. Drag one slider at a time and watch which
+    bar moves. This tool doses nothing; slider positions persist locally
+    (<code>localStorage</code>), nothing leaves the browser.
+  </footer>
+</div>
+
+<script>
+"use strict";
+/* ============ CONFIG ============ */
+const SLIDERS = [
+  { key:"ph",   label:"pH",            min:6.8, max:8.4, step:0.01, fmt:v=>v.toFixed(2) },
+  { key:"temp", label:"Temp (°F)",     min:60,  max:106, step:1,    fmt:v=>String(v)    },
+  { key:"ch",   label:"Ca Hard (ppm)", min:50,  max:800, step:5,    fmt:v=>String(v)    },
+  { key:"ta",   label:"Alk (ppm)",     min:20,  max:300, step:5,    fmt:v=>String(v)    },
+  { key:"cya",  label:"CYA (ppm)",     min:0,   max:150, step:5,    fmt:v=>String(v)    },
+];
+const BALANCED = { ph:7.5, temp:80, ch:300, ta:90, cya:30 };
+/* presets = pumproom POOLS targets (temp: pools 80°F, spa 102°F) */
+const PRESETS = [
+  { id:"comp",   name:"Comp",   r:{ ph:7.5, temp:80,  ch:300, ta:90, cya:30 } },
+  { id:"inst",   name:"Instr",  r:{ ph:7.5, temp:80,  ch:300, ta:90, cya:30 } },
+  { id:"splash", name:"Splash", r:{ ph:7.5, temp:80,  ch:250, ta:90, cya:30 } },
+  { id:"spa",    name:"Spa",    r:{ ph:7.5, temp:102, ch:200, ta:80, cya:0  } },
+];
+const LS_KEY = "lsiexplorer.v1";
+
+/* ============ PORTED VERBATIM from pumproom.html (do not edit) ============ */
+const TF_TABLE = [[32,0],[37,.1],[46,.2],[53,.3],[60,.4],[66,.5],[76,.6],[84,.7],[94,.8],[105,.9]];
+function tempFactor(t){
+  if(t<=32) return 0;
+  if(t>=105) return .9;
+  for(let i=0;i<TF_TABLE.length-1;i++){
+    const [a,fa]=TF_TABLE[i], [b,fb]=TF_TABLE[i+1];
+    if(t>=a && t<=b) return fa+(fb-fa)*(t-a)/(b-a);
+  }
+  return .9;
+}
+function calcLSI(r){
+  if(r.ph==null || r.temp==null || r.ch==null || r.ta==null) return null;
+  if(r.ch<=0 || r.ta<=0) return null;
+  const adjTA = Math.max(1, r.ta - (r.cya??0)/3);   // carbonate correction for CYA
+  const cf = Math.log10(r.ch) - 0.4;
+  const af = Math.log10(adjTA);
+  return r.ph + tempFactor(r.temp) + cf + af - 12.1; // TDS < 1000 assumed
+}
+/* ============ end verbatim port ============ */
+
+/* TDS ≥ 1000 uses the 12.2 constant: subtract the extra 0.1 outside the ported fn */
+function lsiWithTDS(r, tdsHi){
+  const v = calcLSI(r);
+  return v==null ? null : v - (tdsHi ? 0.1 : 0);
+}
+
+/* ================= state ================= */
+let S = load();
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw){ const p = JSON.parse(raw); if(p && p.r) return p; }
+  }catch(e){}
+  return { r:{...BALANCED}, tds:"lo" };
+}
+function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){} }
+const $ = id => document.getElementById(id);
+
+/* ================= gauge (ported from pumproom.html, IDs unchanged) ================= */
+function renderGauge(lsi){
+  const w=700, h=84, x0=30, x1=w-30, y=46;
+  const X = v => x0 + (Math.max(-1,Math.min(1,v))+1)/2*(x1-x0);
+  const zone = (a,b,color)=>`<rect x="${X(a)}" y="${y-7}" width="${X(b)-X(a)}" height="14" rx="4" fill="${color}" opacity=".8"/>`;
+  let svg = "";
+  svg += zone(-1,-0.3,"var(--acid)") + zone(-0.3,0.3,"var(--ok)") + zone(0.3,1,"var(--scale)");
+  for(const v of [-1,-0.5,-0.3,0,0.3,0.5,1]){
+    svg += `<line x1="${X(v)}" y1="${y+10}" x2="${X(v)}" y2="${y+16}" stroke="var(--faint)" stroke-width="1.5"/>
+            <text x="${X(v)}" y="${y+32}" fill="var(--dim)" font-size="13"
+                  font-family="var(--mono)" text-anchor="middle">${v>0?"+":""}${v}</text>`;
+  }
+  svg += `<text x="${X(-0.65)}" y="${y-16}" fill="var(--acid)"  font-size="12" font-weight="700" letter-spacing="2" text-anchor="middle">CORROSIVE</text>
+          <text x="${X(0)}"     y="${y-16}" fill="var(--ok)"    font-size="12" font-weight="700" letter-spacing="2" text-anchor="middle">BALANCED</text>
+          <text x="${X(0.65)}"  y="${y-16}" fill="var(--scale)" font-size="12" font-weight="700" letter-spacing="2" text-anchor="middle">SCALING</text>`;
+  if(lsi!=null){
+    const nx = X(lsi);
+    svg += `<polygon points="${nx-7},${y-22} ${nx+7},${y-22} ${nx},${y-9}" fill="var(--ink)"/>
+            <line x1="${nx}" y1="${y-9}" x2="${nx}" y2="${y+8}" stroke="var(--ink)" stroke-width="2.5"/>`;
+  }
+  $("gauge").innerHTML = svg;
+
+  const numEl=$("lsiNum"), wordEl=$("lsiWord"), noteEl=$("lsiNote");
+  numEl.textContent=(lsi>0?"+":"")+lsi.toFixed(2);
+  let color,word,note;
+  if(lsi<-0.3){ color="var(--acid)"; word="Corrosive";
+    note="Water is under-saturated — etches plaster, attacks grout & metals. Raise CH, TA, or pH."; }
+  else if(lsi>0.3){ color="var(--scale)"; word="Scale-forming";
+    note="Water is over-saturated — expect scale on tile lines and heater surfaces. Lower pH or TA."; }
+  else { color="var(--ok)"; word="Balanced";
+    note="Saturation index within ±0.3. CYA-corrected carbonate alkalinity used."; }
+  numEl.style.color=color; wordEl.style.color=color; wordEl.textContent=word; noteEl.textContent=note;
+}
+
+/* ================= contribution bars ================= */
+function terms(r, tdsHi){
+  const adjTA = Math.max(1, r.ta - (r.cya??0)/3);
+  return [
+    { name:"pH",                 v:r.ph },
+    { name:"temp factor",        v:tempFactor(r.temp) },
+    { name:"calcium  log₁₀CH − 0.4", v:Math.log10(r.ch)-0.4 },
+    { name:"alkalinity  log₁₀(TA − CYA/3)", v:Math.log10(adjTA) },
+    { name:"TDS constant",       v:-(tdsHi?12.2:12.1) },
+  ];
+}
+function renderBars(r, tdsHi, lsi){
+  const T = terms(r, tdsHi);
+  const W=700, rowH=34, top=8, labW=250, valW=64;
+  const x0=labW, x1=W-valW-8, mid=x0+(x1-x0)*(12.4/(12.4+12.4));  // symmetric ±12.4 domain
+  const PX = v => mid + v/12.4*(x1-mid);
+  const el=[];
+  el.push(`<line x1="${mid}" y1="${top-2}" x2="${mid}" y2="${top+rowH*(T.length+1)-6}" stroke="var(--line)" stroke-width="1"/>`);
+  T.forEach((t,i)=>{
+    const y=top+rowH*i, cy=y+rowH/2;
+    const w=Math.abs(PX(t.v)-mid), bx=t.v>=0?mid:PX(t.v);
+    const col = t.v>=0 ? "var(--water)" : "var(--acid)";
+    el.push(`<text x="${labW-10}" y="${cy+4}" fill="var(--dim)" font-size="13" text-anchor="end" font-family="var(--mono)">${t.name}</text>`);
+    el.push(`<rect x="${bx}" y="${cy-8}" width="${Math.max(1.5,w)}" height="16" rx="3" fill="${col}" opacity="0.85"/>`);
+    el.push(`<text x="${x1+10}" y="${cy+4}" fill="var(--ink)" font-size="13" font-family="var(--mono)">${(t.v>=0?"+":"")+t.v.toFixed(2)}</text>`);
+  });
+  // sum row
+  const y=top+rowH*T.length, cy=y+rowH/2;
+  const col = lsi<-0.3 ? "var(--acid)" : lsi>0.3 ? "var(--scale)" : "var(--ok)";
+  el.push(`<line x1="${x0-6}" y1="${y+2}" x2="${W-8}" y2="${y+2}" stroke="var(--line)" stroke-width="1"/>`);
+  el.push(`<text x="${labW-10}" y="${cy+6}" fill="var(--ink)" font-size="13" font-weight="700" text-anchor="end" font-family="var(--mono)">= LSI</text>`);
+  const w=Math.min(Math.abs(PX(lsi)-mid), x1-mid), bx=lsi>=0?mid:mid-w;
+  el.push(`<rect x="${bx}" y="${cy-8}" width="${Math.max(1.5,w)}" height="16" rx="3" fill="${col}"/>`);
+  el.push(`<text x="${x1+10}" y="${cy+6}" fill="${col}" font-size="14" font-weight="700" font-family="var(--mono)">${(lsi>=0?"+":"")+lsi.toFixed(2)}</text>`);
+  $("bars").innerHTML = el.join("");
+}
+
+/* ================= UI ================= */
+function renderSliders(){
+  $("sliders").innerHTML = SLIDERS.map(s=>`
+    <div class="sl">
+      <div class="top"><label for="sl-${s.key}">${s.label}</label>
+        <span class="val" id="v-${s.key}">${s.fmt(S.r[s.key])}</span></div>
+      <input id="sl-${s.key}" data-key="${s.key}" type="range"
+        min="${s.min}" max="${s.max}" step="${s.step}" value="${S.r[s.key]}"
+        aria-label="${s.label}">
+    </div>`).join("");
+}
+function renderPresets(){
+  $("presets").innerHTML = PRESETS.map(p=>
+    `<button class="btn" type="button" data-preset="${p.id}" style="margin-right:6px">${p.name}</button>`).join("");
+}
+function renderTds(){
+  document.querySelectorAll("[data-tds]").forEach(b=>b.setAttribute("aria-pressed", b.dataset.tds===S.tds));
+}
+function refresh(){
+  const lsi = lsiWithTDS(S.r, S.tds==="hi");
+  renderGauge(lsi);
+  renderBars(S.r, S.tds==="hi", lsi);
+}
+function setAll(r){
+  S.r={...r};
+  SLIDERS.forEach(s=>{
+    $("sl-"+s.key).value=S.r[s.key];
+    $("v-"+s.key).textContent=s.fmt(S.r[s.key]);
+  });
+  save(); refresh();
+}
+
+/* ================= events ================= */
+$("sliders").addEventListener("input", e=>{
+  const k=e.target.dataset.key; if(!k) return;
+  S.r[k]=parseFloat(e.target.value);
+  const def=SLIDERS.find(s=>s.key===k);
+  $("v-"+k).textContent=def.fmt(S.r[k]);
+  save(); refresh();
+});
+document.querySelectorAll("[data-tds]").forEach(b=>b.addEventListener("click", ()=>{
+  S.tds=b.dataset.tds; save(); renderTds(); refresh();
+}));
+$("resetBtn").addEventListener("click", ()=>setAll(BALANCED));
+$("presets").addEventListener("click", e=>{
+  const b=e.target.closest("[data-preset]"); if(!b) return;
+  const p=PRESETS.find(x=>x.id===b.dataset.preset);
+  if(p) setAll(p.r);
+});
+
+/* ================= init ================= */
+renderSliders(); renderPresets(); renderTds(); refresh();
+</script>
+</body>
+</html>
