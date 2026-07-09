@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Drawing a Sweater Schematic and Its Stitch Counts from Gauge</title>
+  <link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+  <header>
+    <nav>
+      <ul>
+        <li><a href="../../index.html">Home</a></li>
+        <li><a href="../../travelmap/">Travel Map</a></li>
+        <li><a href="../index.html">Blog</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <h1>Drawing a Sweater Schematic and Its Stitch Counts from Gauge</h1>
+      <time datetime="2026-07-01">July 2026</time>
+
+      <p>Schematic takes the finished measurements of a drop-shoulder sweater plus a swatch gauge and produces the two things a pattern's schematic page holds: a to-scale annotated drawing of the pieces, and every dimension converted into stitch and row counts — cast-ons, rows to underarm, shoulder splits, and a computed sleeve increase schedule. Single file, offline, multiple named plans [1].</p>
+
+      <h2>The problem</h2>
+      <p>Between "I want a 40-inch sweater at my gauge" and casting on sits a page of arithmetic: half the chest times the stitch gauge, rounded to something seamable; the neck subtracted from the body and split into two equal shoulders; the sleeve taper turned into an "increase every Nth row" schedule that actually lands on the right count at the right row. Each step is trivial and each is a chance to be off by one — and an off-by-one in the shoulder split is discovered at seaming, the most expensive possible moment. The tool does the whole page at once and redraws the schematic as the numbers change, so a nonsensical measurement looks wrong before it knits wrong.</p>
+
+      <h2>How it works</h2>
+      <p>Enter finished dimensions — chest, body length, armhole depth, neck width and drop, sleeve length, upper arm, cuff — and the gauge from a washed swatch. The schematic redraws live: body and sleeve pieces side by side on one scale, engineering-style dimension callouts showing inches and counts together (<code>20″ · 90 sts</code>), the armhole line dashed, the neck drop curved. Below it, the counts panel reads like the numbers page of a pattern, with a copy button. Impossible geometry (a neck wider than the body, a cuff wider than the upper arm) blocks the drawing with a named error; a sleeve top that doesn't match the armhole opening raises an amber advisory instead, since that one is a judgment call.</p>
+
+      <figure>
+        <img loading="lazy" src="/kimberlytravel/blog/img/schematic-pieces.png" alt="Schematic showing measurement fields, the to-scale body and sleeve drawing with dimension callouts in inches and counts, and the counts panel">
+        <figcaption>The measurement fields, the to-scale pieces with dual-unit callouts, and the counts panel.</figcaption>
+      </figure>
+
+      <h2>The math</h2>
+      <h3>Counts and rounding</h3>
+      <pre><code>stitches = inches × stitch_gauge / 4   → rounded to the nearest EVEN for cast-ons
+rows     = inches × row_gauge / 4      → rounded to whole rows
+
+body cast-on = chest/2 at gauge         shoulders = (body − neck) / 2</code></pre>
+      <p>Cast-ons and the neck round to even stitches, which guarantees the shoulder split is a whole number — no "one shoulder has an extra stitch" surprises. The honest consequence, stated in the tool: the knit counts can differ from the entered inches by up to half a stitch or row. Knit the counts, not the ruler.</p>
+      <h3>The sleeve schedule</h3>
+      <p>The taper from cuff to upper arm is a shaping-distribution problem, and the suite already has that math: <code>overRows()</code> is ported <strong>verbatim</strong> from Skein &amp; Gauge's shaping panel [2] and held identical by a parity test — both files' functions run against 18 input combinations (feasible, infeasible, wrong-direction, zero-row, and boundary cases), asserting identical output. At the default measurements it produces:</p>
+      <pre><code>cast on 36 sts → inc 2 every 7th row 12×, then inc 2 every 6th row 4× → 68 sts over 108 rows</code></pre>
+      <p>An infeasible taper (more shaping rows than the sleeve has) surfaces as the same worded error Skein &amp; Gauge gives, in place of the schedule.</p>
+      <h3>The drop-shoulder check</h3>
+      <p>On a drop-shoulder sweater the sleeve top seams across the armhole opening, so the upper arm should be close to twice the armhole depth. When they disagree by more than an inch the amber advisory names both numbers — the most common reason a drop-shoulder sleeve doesn't fit its opening.</p>
+
+      <h2>Editing the config</h2>
+      <p>There is almost no config — the tool is measurement-driven. The two constants at the top of the <code>&lt;script&gt;</code> block are <code>SLEEVE_MISMATCH_IN</code> (the 1-inch advisory threshold) and <code>LS_KEY</code> (<code>schematic.v1</code>). The block marked <code>PORTED VERBATIM from skeinmath.html</code> should never be edited independently — if the shaping math changes there, re-port it. New-plan defaults are the <code>mkplan()</code> factory.</p>
+
+      <h2>Limitations</h2>
+      <ul>
+        <li><strong>Drop-shoulder construction only, knit flat.</strong> No set-in sleeves, raglans, or circular yokes — those are different geometry, not parameter changes. This covers the construction the rest of the suite's tools (stripes, colorwork charts) most often decorate.</li>
+        <li>Measurements are <strong>finished</strong> dimensions: ease is decided before this tool, not inside it.</li>
+        <li>The front neck is a depth and width with a drawn curve — the tool gives the neck stitch count and drop rows, not a bind-off-and-decrease curve schedule.</li>
+        <li>No waist shaping, short rows, or edging allowances; ribbing is part of the lengths you enter.</li>
+        <li>Inches only, and plans are per-device (<code>localStorage</code>) — the copied counts are the portable form.</li>
+      </ul>
+
+      <section>
+        <h2>References</h2>
+        <ol>
+          <li><a href="../../tools/schematic.html">Sweater Schematic</a></li>
+          <li><a href="../../tools/skeinmath.html">Skein &amp; Gauge Calculator</a> — the source of the ported <code>overRows()</code> shaping math.</li>
+        </ol>
+      </section>
+    </article>
+  </main>
+
+  <footer>
+    <hr>
+    <p>This website's source code is open and available on <a href="https://github.com/mds08011/kimberlytravel">Github</a>.</p>
+  </footer>
+</body>
+</html>

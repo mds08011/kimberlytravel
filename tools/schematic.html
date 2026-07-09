@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<!--
+  SCHEMATIC — Drop-Shoulder Sweater Schematic & Counts
+  v1.0.0 · 2026-07-09
+  Fiber-arts suite, companion to skeinmath.html / stripeplan.html / graphpaper.html.
+  Single-file, offline, zero dependencies.
+  Enter FINISHED garment measurements (ease included) plus gauge; get a to-scale
+  annotated schematic of the body and sleeve pieces, every dimension converted
+  to stitch/row counts, and a sleeve increase schedule computed with the same
+  two-interval split as Skein & Gauge's shaping panel (overRows ported VERBATIM;
+  a parity test holds the two identical).
+  Drop-shoulder construction only, knit flat: body = two rectangles with a neck
+  notch, sleeves = two tapered trapezoids. Multiple named plans persist in
+  localStorage (schematic.v1).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1b1512">
+<title>Schematic — Sweater Pieces & Counts</title>
+<style>
+  :root{
+    --bg:#1b1512; --panel:#241c17; --panel2:#2d231c; --line:#3e3128;
+    --ink:#f0e7dc; --dim:#b3a494; --faint:#7d7062;
+    --madder:#e08484; --indigo:#8fa8dc; --weld:#d9a441; --leaf:#8fbf96;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --serif:"Iowan Old Style",Palatino,"Palatino Linotype",Georgia,serif;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  [hidden]{display:none !important}
+  html{-webkit-text-size-adjust:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;
+    line-height:1.5;padding:0 14px calc(28px + env(safe-area-inset-bottom))}
+  .wrap{max-width:680px;margin:0 auto}
+
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+    padding:20px 2px 14px;border-bottom:1px solid var(--line)}
+  h1{font-family:var(--serif);font-size:1.45rem;font-weight:600;font-style:italic}
+  h1 .amp{color:var(--madder)}
+  header .ver{font-family:var(--mono);font-size:.7rem;color:var(--faint)}
+
+  section{margin-top:20px}
+  h2{font-family:var(--serif);font-size:1.08rem;font-weight:600;font-style:italic;
+    display:flex;align-items:center;gap:10px;margin-bottom:4px}
+  h2::after{content:"";flex:1;height:1px;background:var(--line)}
+  .sub{font-size:.8rem;color:var(--dim);margin-bottom:12px}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+
+  .toolrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  select.big{flex:1;min-width:140px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:8px;color:var(--ink);font-size:.92rem;padding:10px;appearance:none}
+  .btn{appearance:none;border:1px solid var(--line);background:var(--panel2);color:var(--ink);
+    border-radius:8px;padding:9px 13px;font-size:.83rem;font-weight:600;cursor:pointer}
+  .btn:active{background:var(--panel)}
+  .btn.primary{border-color:var(--madder);color:var(--madder)}
+  .btn:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--madder);outline-offset:2px}
+
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  @media(max-width:430px){.grid{grid-template-columns:1fr 1fr}}
+  .field{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+  .field label{display:block;font-size:.62rem;font-weight:700;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--dim);margin-bottom:3px}
+  .field input{width:100%;background:transparent;border:none;color:var(--ink);
+    font-family:var(--mono);font-size:1.1rem;font-weight:600;padding:0}
+  .field input:focus{outline:none}
+  .field:focus-within{border-color:var(--madder)}
+  input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  input[type=number]{-moz-appearance:textfield}
+  .subhead{font-size:.66rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--faint);margin:14px 0 8px}
+
+  /* validation banner */
+  .valwarn{margin-top:12px;border:1px solid var(--madder);border-radius:10px;
+    padding:9px 12px;font-size:.82rem;color:var(--madder);display:none}
+  .valwarn.show{display:block}
+  .advice{margin-top:8px;border:1px solid var(--weld);border-radius:10px;
+    padding:9px 12px;font-size:.82rem;color:var(--weld);display:none}
+  .advice.show{display:block}
+
+  /* schematic drawing */
+  .preview{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+  .preview svg{display:block;width:100%;height:auto}
+
+  /* counts */
+  pre.counts{background:var(--panel2);border:1px solid var(--line);border-radius:10px;
+    padding:12px;font-family:var(--mono);font-size:.78rem;line-height:1.75;color:var(--dim);
+    white-space:pre;overflow-x:auto}
+  pre.counts b{color:var(--ink)}
+
+  .rowbtns{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .note{margin-top:8px;font-size:.76rem;color:var(--faint);font-style:italic;font-family:var(--serif)}
+
+  footer{margin-top:28px;border-top:1px solid var(--line);padding-top:12px;
+    font-size:.75rem;color:var(--faint);line-height:1.65}
+  footer code{font-family:var(--mono)}
+
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(8px);
+    background:var(--panel2);border:1px solid var(--madder);color:var(--ink);border-radius:8px;
+    padding:8px 16px;font-size:.85rem;opacity:0;pointer-events:none;
+    transition:opacity .2s,transform .2s;max-width:90vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media (prefers-reduced-motion:reduce){.toast{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Sche<span class="amp">matic</span></h1>
+    <span class="ver">sweater pieces · v1.0.0 · offline</span>
+  </header>
+
+  <section aria-label="Plan">
+    <div class="toolrow">
+      <select class="big" id="planSel" aria-label="Plan"></select>
+      <button class="btn" id="planNew" type="button">New</button>
+      <button class="btn" id="planRen" type="button">Rename</button>
+      <button class="btn" id="planDel" type="button">Delete</button>
+    </div>
+  </section>
+
+  <section aria-label="Measurements">
+    <h2>Measurements</h2>
+    <p class="sub">Finished dimensions in inches — ease already included. Drop-shoulder, knit flat.</p>
+    <div class="card">
+      <div class="subhead">Body</div>
+      <div class="grid">
+        <div class="field"><label for="mChest">Chest circumf.</label>
+          <input id="mChest" data-m="chest" type="number" inputmode="decimal" min="16" max="80" step="0.5"></div>
+        <div class="field"><label for="mLen">Body length</label>
+          <input id="mLen" data-m="len" type="number" inputmode="decimal" min="10" max="40" step="0.5"></div>
+        <div class="field"><label for="mArm">Armhole depth</label>
+          <input id="mArm" data-m="arm" type="number" inputmode="decimal" min="4" max="16" step="0.25"></div>
+        <div class="field"><label for="mNeckW">Neck width</label>
+          <input id="mNeckW" data-m="neckW" type="number" inputmode="decimal" min="4" max="16" step="0.25"></div>
+        <div class="field"><label for="mNeckD">Front neck drop</label>
+          <input id="mNeckD" data-m="neckD" type="number" inputmode="decimal" min="0.5" max="8" step="0.25"></div>
+      </div>
+      <div class="subhead">Sleeve</div>
+      <div class="grid">
+        <div class="field"><label for="mSlv">Sleeve length</label>
+          <input id="mSlv" data-m="slv" type="number" inputmode="decimal" min="6" max="30" step="0.5"></div>
+        <div class="field"><label for="mUpper">Upper arm circumf.</label>
+          <input id="mUpper" data-m="upper" type="number" inputmode="decimal" min="8" max="30" step="0.5"></div>
+        <div class="field"><label for="mCuff">Cuff circumf.</label>
+          <input id="mCuff" data-m="cuff" type="number" inputmode="decimal" min="5" max="20" step="0.5"></div>
+      </div>
+      <div class="subhead">Gauge (from a washed swatch)</div>
+      <div class="grid">
+        <div class="field"><label for="mStG">Sts / 4 in</label>
+          <input id="mStG" data-m="stG" type="number" inputmode="decimal" min="4" max="60" step="0.5"></div>
+        <div class="field"><label for="mRowG">Rows / 4 in</label>
+          <input id="mRowG" data-m="rowG" type="number" inputmode="decimal" min="4" max="80" step="0.5"></div>
+      </div>
+      <div class="valwarn" id="valwarn"></div>
+      <div class="advice" id="advice"></div>
+    </div>
+  </section>
+
+  <section aria-label="Schematic">
+    <h2>Schematic</h2>
+    <p class="sub">To scale, both pieces on one ruler — inches above the line, counts below it.</p>
+    <div class="preview"><svg id="schem"></svg></div>
+  </section>
+
+  <section aria-label="Counts">
+    <h2>The counts</h2>
+    <p class="sub">Cast-ons rounded to even stitches; the sleeve schedule is Skein &amp; Gauge's two-interval split.</p>
+    <pre class="counts" id="counts"></pre>
+    <div class="rowbtns">
+      <button class="btn primary" id="copyCounts" type="button">Copy counts</button>
+    </div>
+  </section>
+
+  <footer>
+    Construction is <b>drop shoulder, knit flat</b>: body front and back are identical
+    rectangles (front gets the neck drop), sleeves are tapered trapezoids sewn flat across
+    the armhole edge. Stitch counts are <code>inches × gauge</code> rounded to even for
+    cast-ons; rows are rounded to whole rows, so displayed counts can differ from the entered
+    inches by up to half a stitch or row — knit the counts, not the ruler. The sleeve increase
+    schedule uses the same <code>overRows()</code> math as Skein &amp; Gauge, ported verbatim.
+    Enter <b>finished</b> measurements — ease is your decision, made before this tool.
+    Plans live in this browser only (<code>localStorage</code>).
+  </footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ============ CONFIG ============ */
+const SLEEVE_MISMATCH_IN = 1;   // advisory when sleeve top vs 2x armhole differ by more
+const LS_KEY = "schematic.v1";
+
+/* ============ PORTED VERBATIM from skeinmath.html (do not edit) ============ */
+function overRows(start, end, rows, per, dir){
+  if(!start || !end) return {err:"Enter start and end stitch counts."};
+  if(!rows || rows<1) return {err:"Enter the number of rows to shape over."};
+  per = per || 1;
+  const diff = Math.abs(end-start);
+  const wantDir = end>start ? "inc" : end<start ? "dec" : "none";
+  if(wantDir==="none") return {err:"Start and end counts are the same — no shaping needed."};
+  if(dir && dir!==wantDir)
+    return {err:"Those counts "+(wantDir==="inc"?"increase":"decrease")+", but "+(dir==="inc"?"Increase":"Decrease")+" is selected."};
+  if(diff % per !== 0)
+    return {err:diff+" stitches doesn't divide evenly by "+per+" per shaping row. Try "+per+" into a multiple of "+per+"."};
+  const shapings = diff/per;
+  if(shapings > rows) return {err:"Need "+shapings+" shaping rows but only have "+rows+" rows."};
+  const base=Math.floor(rows/shapings), rem=rows%shapings;
+  return { shapings, bigEvery:base+1, bigN:rem, smallEvery:base, smallN:shapings-rem, per, dir:wantDir };
+}
+/* ============ end verbatim port ============ */
+
+/* ================= state ================= */
+let S = load();
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw){ const p = JSON.parse(raw); if(p && p.plans) return p; }
+  }catch(e){}
+  const id = mkid();
+  return { active:id, plans:{ [id]: mkplan("My sweater") } };
+}
+function mkid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+function mkplan(name){
+  return { name, m:{ chest:40, len:24, arm:8, neckW:8, neckD:3,
+                     slv:18, upper:15, cuff:8, stG:18, rowG:24 }, updated:Date.now() };
+}
+function save(){
+  P().updated = Date.now();
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){}
+}
+const $   = id => document.getElementById(id);
+const P   = () => S.plans[S.active];
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const num = v => { const n=parseFloat(v); return Number.isFinite(n)&&n>0 ? n : null; };
+const r1  = x => Math.round(x*10)/10;
+
+/* ================= pure counts math (testable) ================= */
+const stsOf  = (inches, stG) => inches*stG/4;
+const rowsOf = (inches, rowG) => Math.max(1, Math.round(inches*rowG/4));
+const evenSts = x => { const n=Math.round(x); return n%2 ? (x>n ? n+1 : n-1) : n; };
+function validate(m){
+  const errs=[];
+  if(m.neckW >= m.chest/2) errs.push("Neck width must be narrower than the body piece ("+r1(m.chest/2)+" in).");
+  if(m.arm >= m.len) errs.push("Armhole depth must be less than body length.");
+  if(m.neckD >= m.arm) errs.push("Front neck drop should sit within the armhole depth.");
+  if(m.upper <= m.cuff) errs.push("Upper arm must be wider than the cuff (drop-shoulder sleeves taper).");
+  return errs;
+}
+/* everything the schematic and counts need, from measurements + gauge */
+function computeCounts(m){
+  const errs = validate(m);
+  if(errs.length) return { errs };
+  const bodyW    = m.chest/2;
+  const bodyCO   = evenSts(stsOf(bodyW, m.stG));
+  const neckSts  = evenSts(stsOf(m.neckW, m.stG));
+  const shoulder = (bodyCO - neckSts)/2;                     // integer: even − even over 2
+  const underRows= rowsOf(m.len - m.arm, m.rowG);
+  const armRows  = rowsOf(m.arm, m.rowG);
+  const neckRows = rowsOf(m.neckD, m.rowG);
+  const cuffCO   = evenSts(stsOf(m.cuff, m.stG));
+  const upperSts = evenSts(stsOf(m.upper, m.stG));
+  const slvRows  = rowsOf(m.slv, m.rowG);
+  const sched    = overRows(cuffCO, upperSts, slvRows, 2, "inc");
+  const mismatch = Math.abs(m.upper - 2*m.arm);
+  return { errs:[], bodyW, bodyCO, neckSts, shoulder, underRows, armRows, neckRows,
+           cuffCO, upperSts, slvRows, sched, mismatch };
+}
+function ordinal(n){
+  const s=["th","st","nd","rd"], v=n%100;
+  return n+(s[(v-20)%10]||s[v]||s[0]);
+}
+function schedText(sched){
+  if(sched.err) return "— "+sched.err;
+  const p=[];
+  if(sched.bigN>0)   p.push("inc 2 every "+ordinal(sched.bigEvery)+" row "+sched.bigN+"×");
+  if(sched.smallN>0) p.push("inc 2 every "+ordinal(sched.smallEvery)+" row "+sched.smallN+"×");
+  return p.join(", then ");
+}
+function countsText(name, m, c){
+  return [
+    "SCHEMATIC — "+name+" — drop shoulder, knit flat — "+m.stG+" sts / "+m.rowG+" rows per 4 in",
+    "",
+    "BODY — make 2 (back plain, front with neck drop)",
+    "  cast on "+c.bodyCO+" sts ("+r1(m.chest/2)+" in)",
+    "  knit "+c.underRows+" rows to underarm ("+r1(m.len-m.arm)+" in)",
+    "  mark armholes, knit "+c.armRows+" rows ("+r1(m.arm)+" in)",
+    "  front: start neck "+c.neckRows+" rows below shoulder ("+r1(m.neckD)+" in drop)",
+    "  shoulders "+c.shoulder+" sts each · neck "+c.neckSts+" sts ("+r1(m.neckW)+" in)",
+    "",
+    "SLEEVE — make 2",
+    "  cast on "+c.cuffCO+" sts ("+r1(m.cuff)+" in cuff)",
+    "  "+schedText(c.sched)+" → "+c.upperSts+" sts ("+r1(m.upper)+" in)",
+    "  total "+c.slvRows+" rows ("+r1(m.slv)+" in)",
+  ].join("\n");
+}
+
+/* ================= schematic drawing ================= */
+function dimH(el, x1, x2, y, color, txt, below){
+  el.push('<line x1="'+x1+'" y1="'+y+'" x2="'+x2+'" y2="'+y+'" stroke="'+color+'" stroke-width="0.1"/>');
+  el.push('<line x1="'+x1+'" y1="'+(y-0.35)+'" x2="'+x1+'" y2="'+(y+0.35)+'" stroke="'+color+'" stroke-width="0.1"/>');
+  el.push('<line x1="'+x2+'" y1="'+(y-0.35)+'" x2="'+x2+'" y2="'+(y+0.35)+'" stroke="'+color+'" stroke-width="0.1"/>');
+  el.push('<text x="'+((x1+x2)/2)+'" y="'+(y+(below?1.15:-0.5))+'" fill="'+color+'" font-size="0.95" text-anchor="middle" style="font-family:var(--mono)">'+txt+'</text>');
+}
+function dimV(el, x, y1, y2, color, txt){
+  el.push('<line x1="'+x+'" y1="'+y1+'" x2="'+x+'" y2="'+y2+'" stroke="'+color+'" stroke-width="0.1"/>');
+  el.push('<line x1="'+(x-0.35)+'" y1="'+y1+'" x2="'+(x+0.35)+'" y2="'+y1+'" stroke="'+color+'" stroke-width="0.1"/>');
+  el.push('<line x1="'+(x-0.35)+'" y1="'+y2+'" x2="'+(x+0.35)+'" y2="'+y2+'" stroke="'+color+'" stroke-width="0.1"/>');
+  el.push('<text x="'+(x+0.45)+'" y="'+((y1+y2)/2+0.35)+'" fill="'+color+'" font-size="0.95" style="font-family:var(--mono)">'+txt+'</text>');
+}
+function drawSchematic(m, c){
+  const svg=$("schem");
+  if(c.errs && c.errs.length){ svg.setAttribute("viewBox","0 0 60 8");
+    svg.innerHTML='<text x="30" y="4.6" fill="var(--faint)" font-size="1.4" text-anchor="middle" style="font-family:var(--sans)">Fix the measurements above to draw the schematic.</text>';
+    return; }
+  const bodyW=m.chest/2, GAP=6, PAD=4.6;
+  const H=Math.max(m.len, m.slv);
+  const vbW=bodyW+GAP+m.upper+2*PAD+4, vbH=H+PAD+4.2;
+  const bx=PAD, by=1.2+(H-m.len);                 // bottom-align pieces
+  const body='stroke="var(--dim)" stroke-width="0.18" fill="var(--panel2)" stroke-linejoin="round"';
+  const seam='stroke="var(--faint)" stroke-width="0.1" stroke-dasharray="0.5 0.35" fill="none"';
+  const el=[];
+
+  /* ---- body piece (front, with neck drop) ---- */
+  const nx1=bx+bodyW/2-m.neckW/2, nx2=bx+bodyW/2+m.neckW/2;
+  el.push('<path d="M '+bx+' '+(by+m.len)+' L '+bx+' '+by+' L '+nx1+' '+by+
+    ' C '+nx1+' '+(by+m.neckD)+' '+nx2+' '+(by+m.neckD)+' '+nx2+' '+by+
+    ' L '+(bx+bodyW)+' '+by+' L '+(bx+bodyW)+' '+(by+m.len)+' Z" '+body+'/>');
+  el.push('<line x1="'+bx+'" y1="'+(by+m.arm)+'" x2="'+(bx+bodyW)+'" y2="'+(by+m.arm)+'" '+seam.replace("fill=\"none\"","")+'/>');
+  el.push('<text x="'+(bx+bodyW/2)+'" y="'+(by+m.len-1)+'" fill="var(--faint)" font-size="1.05" text-anchor="middle" style="font-family:var(--serif);font-style:italic">body ×2</text>');
+  dimH(el, bx, bx+bodyW, by+m.len+1.3, "var(--indigo)", r1(bodyW)+'″ · '+c.bodyCO+' sts', true);
+  dimV(el, bx+bodyW+1.1, by, by+m.arm, "var(--weld)", r1(m.arm)+'″ · '+c.armRows+' r');
+  dimV(el, bx+bodyW+1.1, by+m.arm, by+m.len, "var(--indigo)", r1(m.len-m.arm)+'″ · '+c.underRows+' r');
+  dimH(el, nx1, nx2, by-0.9, "var(--madder)", r1(m.neckW)+'″ · '+c.neckSts+' sts', false);
+
+  /* ---- sleeve piece ---- */
+  const sx=bx+bodyW+GAP, sy=1.2+(H-m.slv);
+  const cx=sx+m.upper/2;
+  el.push('<path d="M '+(cx-m.cuff/2)+' '+(sy+m.slv)+' L '+(cx-m.upper/2)+' '+sy+
+    ' L '+(cx+m.upper/2)+' '+sy+' L '+(cx+m.cuff/2)+' '+(sy+m.slv)+' Z" '+body+'/>');
+  el.push('<text x="'+cx+'" y="'+(sy+m.slv-1)+'" fill="var(--faint)" font-size="1.05" text-anchor="middle" style="font-family:var(--serif);font-style:italic">sleeve ×2</text>');
+  dimH(el, cx-m.upper/2, cx+m.upper/2, sy-0.9, "var(--indigo)", r1(m.upper)+'″ · '+c.upperSts+' sts', false);
+  dimH(el, cx-m.cuff/2, cx+m.cuff/2, sy+m.slv+1.3, "var(--indigo)", r1(m.cuff)+'″ · '+c.cuffCO+' sts', true);
+  dimV(el, cx+m.upper/2+1.1, sy, sy+m.slv, "var(--weld)", r1(m.slv)+'″ · '+c.slvRows+' r');
+
+  svg.setAttribute("viewBox","0 0 "+vbW+" "+vbH);
+  svg.innerHTML=el.join("");
+}
+
+/* ================= render ================= */
+function renderPlans(){
+  const ids=Object.keys(S.plans).sort((a,b)=>S.plans[b].updated-S.plans[a].updated);
+  $("planSel").innerHTML = ids.map(id=>
+    '<option value="'+id+'"'+(id===S.active?" selected":"")+'>'+esc(S.plans[id].name)+'</option>').join("");
+}
+function renderFields(){
+  const m=P().m;
+  document.querySelectorAll("[data-m]").forEach(inp=>{ inp.value=m[inp.dataset.m]; });
+}
+function refresh(){
+  const m=P().m, c=computeCounts(m);
+  const vw=$("valwarn");
+  vw.classList.toggle("show", c.errs.length>0);
+  vw.innerHTML = c.errs.map(esc).join("<br>");
+  const ad=$("advice");
+  if(!c.errs.length && c.mismatch > SLEEVE_MISMATCH_IN){
+    ad.classList.add("show");
+    ad.textContent="⚠ Sleeve top is "+r1(m.upper)+"″ but the armhole opening is 2 × "+r1(m.arm)+
+      "″ = "+r1(2*m.arm)+"″ — a drop-shoulder sleeve should match it within ~1″. Adjust upper arm or armhole depth.";
+  } else ad.classList.remove("show");
+  drawSchematic(m, c);
+  $("counts").textContent = c.errs.length
+    ? "Fix the measurements to compute counts."
+    : countsText(P().name, m, c);
+}
+function renderAll(){ renderPlans(); renderFields(); refresh(); }
+
+/* ================= toast / copy ================= */
+function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show");
+  clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove("show"),1900); }
+function copyText(text, ok){
+  const done=s=>toast(s?ok:"Copy failed — long-press to select");
+  if(navigator.clipboard && navigator.clipboard.writeText)
+    navigator.clipboard.writeText(text).then(()=>done(true)).catch(()=>fb());
+  else fb();
+  function fb(){const ta=document.createElement("textarea");ta.value=text;ta.style.position="fixed";
+    ta.style.opacity="0";document.body.appendChild(ta);ta.select();let o=false;
+    try{o=document.execCommand("copy");}catch(e){}document.body.removeChild(ta);done(o);}
+}
+$("copyCounts").addEventListener("click", ()=>{
+  const c=computeCounts(P().m);
+  if(c.errs.length){ toast("Fix the measurements first"); return; }
+  copyText(countsText(P().name, P().m, c), "Counts copied");
+});
+
+/* ================= events ================= */
+document.querySelectorAll("[data-m]").forEach(inp=>{
+  inp.addEventListener("input", ()=>{
+    const v=num(inp.value);
+    if(v!=null){ P().m[inp.dataset.m]=v; save(); refresh(); }
+  });
+});
+$("planSel").addEventListener("change", e=>{
+  S.active=e.target.value;
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(err){}
+  renderAll();
+});
+$("planNew").addEventListener("click", ()=>{
+  const name=prompt("Name the plan:");
+  if(!name || !name.trim()) return;
+  const id=mkid();
+  S.plans[id]=mkplan(name.trim());
+  S.active=id; save(); renderAll();
+});
+$("planRen").addEventListener("click", ()=>{
+  const name=prompt("Rename plan:", P().name);
+  if(!name || !name.trim()) return;
+  P().name=name.trim(); save(); renderPlans(); refresh();
+});
+$("planDel").addEventListener("click", ()=>{
+  if(Object.keys(S.plans).length<2){ toast("Can't delete the only plan"); return; }
+  if(!confirm('Delete "'+P().name+'"? This can\'t be undone.')) return;
+  delete S.plans[S.active];
+  S.active=Object.keys(S.plans)[0];
+  save(); renderAll();
+});
+
+/* ================= init ================= */
+renderAll();
+</script>
+</body>
+</html>
