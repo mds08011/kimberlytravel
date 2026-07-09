@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<!--
+  CHEM TRENDS — Chemistry Trend Dashboard
+  v1.0.0 · 2026-07-09
+  Aquatics suite, companion to pumproom.html / readingqueue.html / chemstock.html.
+  Single-file, offline, zero dependencies.
+  Renders per-pool time-series of FC, pH, temp, and flow from Reading Queue's
+  logged readings (read-only) plus CSV imports of the queue's own export format,
+  with compliance bands so excursions and slow drift are visible.
+  Reads readingqueue.v1 READ-ONLY; imported CSV rows persist in chemtrends.v1.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#10181d">
+<title>Chem Trends — Chemistry Dashboard</title>
+<style>
+  :root{
+    --bg:#10181d; --panel:#17232b; --panel2:#1c2a34; --line:#2a3b46;
+    --ink:#e9f1f4; --dim:#8ba1ac; --faint:#5d7280;
+    --water:#46c8dd; --chlor:#f2c53d; --acid:#e5534b; --ok:#55c98c;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;
+    line-height:1.45;padding:0 14px calc(28px + env(safe-area-inset-bottom))}
+  .wrap{max-width:760px;margin:0 auto}
+
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+    padding:18px 2px 12px;border-bottom:1px solid var(--line)}
+  h1{font-size:1.05rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+  h1 .tick{color:var(--water)}
+  header .ver{font-family:var(--mono);font-size:.7rem;color:var(--faint)}
+
+  .microlabel{font-size:.66rem;font-weight:700;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--dim)}
+  section{margin-top:20px}
+  .sechead{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .sechead::after{content:"";flex:1;height:1px;background:var(--line)}
+  .sechead .count{font-family:var(--mono);font-size:.72rem;color:var(--faint)}
+
+  /* pool selector (suite pattern) */
+  .pools{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .pool{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink);
+    border-radius:10px;padding:10px 12px 9px;text-align:left;cursor:pointer;min-height:56px}
+  .pool .pname{font-weight:700;font-size:.92rem}
+  .pool .pvol{font-family:var(--mono);font-size:.74rem;color:var(--dim);margin-top:1px}
+  .pool[aria-pressed="true"]{border-color:var(--water);background:var(--panel2);
+    box-shadow:inset 0 0 0 1px var(--water)}
+  .pool[aria-pressed="true"] .pvol{color:var(--water)}
+  .pool:focus-visible,.btn:focus-visible,.seg button:focus-visible{outline:2px solid var(--water);outline-offset:2px}
+
+  /* controls */
+  .toolrow{display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{appearance:none;border:none;background:var(--panel);color:var(--dim);
+    padding:8px 13px;font-size:.8rem;font-weight:700;cursor:pointer}
+  .seg button[aria-pressed="true"]{background:var(--water);color:#0d2027}
+  .btn{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink);
+    border-radius:8px;padding:9px 14px;font-size:.84rem;font-weight:600;cursor:pointer}
+  .btn:active{background:var(--panel2)}
+  .btn.primary{border-color:var(--water);color:var(--water)}
+  .srcline{font-family:var(--mono);font-size:.72rem;color:var(--faint);margin-left:auto}
+
+  /* chart cards */
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:12px 12px 8px;margin-top:10px}
+  .card .chead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px}
+  .card .cname{font-size:.66rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
+  .card .cstat{font-family:var(--mono);font-size:.72rem;color:var(--faint)}
+  .card .cstat b{color:var(--ink)}
+  .card .cstat .viol{color:var(--acid);font-weight:700}
+  svg{display:block;width:100%;height:auto}
+  .empty{padding:26px 14px;text-align:center;color:var(--faint);font-size:.85rem;
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-top:10px}
+
+  footer{margin-top:26px;border-top:1px solid var(--line);padding-top:12px;
+    font-size:.74rem;color:var(--faint);line-height:1.6}
+  footer code{font-family:var(--mono)}
+
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(8px);
+    background:var(--panel2);border:1px solid var(--water);color:var(--ink);border-radius:8px;
+    padding:8px 16px;font-size:.85rem;opacity:0;pointer-events:none;
+    transition:opacity .2s,transform .2s;max-width:90vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media (prefers-reduced-motion:reduce){.toast{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1><span class="tick">▮</span> Chem Trends</h1>
+    <span class="ver">trend dashboard · v1.0.0 · offline</span>
+  </header>
+
+  <section aria-label="Body of water">
+    <div class="sechead"><span class="microlabel">Body of Water</span></div>
+    <div class="pools" id="pools"></div>
+    <div class="toolrow">
+      <span class="seg" role="group" aria-label="Time range">
+        <button type="button" data-range="14" aria-pressed="false">14 d</button>
+        <button type="button" data-range="45" aria-pressed="false">45 d</button>
+        <button type="button" data-range="all" aria-pressed="false">All</button>
+      </span>
+      <span class="seg" role="group" aria-label="View mode">
+        <button type="button" data-mode="time" aria-pressed="true">Timeline</button>
+        <button type="button" data-mode="dow" aria-pressed="false">By weekday</button>
+      </span>
+      <span class="srcline" id="srcline"></span>
+    </div>
+  </section>
+
+  <section aria-label="Charts">
+    <div class="sechead"><span class="microlabel">Trends</span>
+      <span class="count" id="ptCount"></span></div>
+    <div id="charts"></div>
+  </section>
+
+  <section aria-label="Import">
+    <div class="sechead"><span class="microlabel">Import History</span></div>
+    <div class="toolrow" style="margin-top:0">
+      <button class="btn primary" id="importBtn" type="button">Import Reading Queue CSV</button>
+      <button class="btn" id="clearImp" type="button">Clear imported</button>
+      <input id="fileIn" type="file" accept=".csv,text/csv" style="display:none">
+    </div>
+  </section>
+
+  <footer>
+    Live points come from this device's <b>Reading Queue</b> log (read-only — nothing here
+    modifies the queue). CSV imports use the queue's own export format and persist in
+    <code>chemtrends.v1</code>, so history survives the queue's "clear entered".
+    Shaded bands are the compliance ranges (FC: body minimum to 10 ppm; pH: 7.2–8.0);
+    red dots are out-of-band readings. Lines break across gaps longer than 3 days rather
+    than inventing a trend. The queue logs FC/pH/temp/flow only, so <b>LSI trends are not
+    computable</b> from this data. <code>localStorage</code> is per-device — this dashboard
+    shows <i>this device's</i> logging history; the CSV import is the merge path across devices.
+  </footer>
+</div>
+
+<div class="toast" id="toast">Imported</div>
+
+<script>
+"use strict";
+/* ============ CONFIG (volumes/minimums copied verbatim from pumproom.html) ============ */
+const POOLS = [
+  { id:"comp",   name:"Competition Pool",   gal:315643, minFC:2.0 },
+  { id:"inst",   name:"Instructional Pool", gal:84200,  minFC:2.0 },
+  { id:"splash", name:"Splash Pad",         gal:4100,   minFC:3.0 },
+  { id:"spa",    name:"Spa",                gal:2000,   minFC:3.0 },
+];
+const MAX_FC = 10, PH_LO = 7.2, PH_HI = 8.0;
+const GAP_DAYS = 3;                    // polyline breaks across gaps longer than this
+const QUEUE_KEY = "readingqueue.v1";   // source log (read-only)
+const LS_KEY    = "chemtrends.v1";
+const DAY = 864e5;
+const METRICS = [
+  { key:"fc",   label:"Free Chlorine (ppm)", band:p=>[p.minFC, MAX_FC] },
+  { key:"ph",   label:"pH",                  band:()=>[PH_LO, PH_HI]   },
+  { key:"temp", label:"Temperature (°F)",    band:()=>null             },
+  { key:"flow", label:"Flow (GPM)",          band:()=>null             },
+];
+
+/* ================= state ================= */
+let S = load();
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw){ const p = JSON.parse(raw); if(p && Array.isArray(p.imported)) return p; }
+  }catch(e){}
+  return { active:"comp", range:"45", mode:"time", imported:[] }; // imported: [{poolId, iso, fc, ph, temp, flow}]
+}
+function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){} }
+const $    = id => document.getElementById(id);
+const esc  = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const num  = v => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
+const pool = () => POOLS.find(p=>p.id===S.active) || POOLS[0];
+const pad2 = n => String(n).padStart(2,"0");
+
+/* ================= data: queue (read-only) ================= */
+/* A queue row's intended reading time is the iso capture DATE + the editable
+   HH:MM time field (backfill support) — mirror readingqueue's own display logic. */
+function effectiveMs(iso, hhmm){
+  const d = new Date(iso);
+  if(isNaN(d)) return null;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm||"");
+  if(m) d.setHours(+m[1], +m[2], 0, 0);
+  return d.getTime();
+}
+function readQueue(){
+  try{
+    const raw = localStorage.getItem(QUEUE_KEY);
+    if(!raw) return [];
+    const p = JSON.parse(raw);
+    if(!p || !Array.isArray(p.q)) return [];
+    const out = [];
+    for(const r of p.q){
+      const t = effectiveMs(r.iso, r.time);
+      if(t==null || !POOLS.some(x=>x.id===r.poolId)) continue;
+      out.push({ poolId:r.poolId, t,
+        fc:num(r.fc), ph:num(r.ph), temp:num(r.temp), flow:num(r.flow), src:"queue" });
+    }
+    return out;
+  }catch(e){ return []; }
+}
+
+/* ================= data: CSV import ================= */
+function splitCSVLine(line){
+  const out=[]; let cur="", inQ=false;
+  for(let i=0;i<line.length;i++){
+    const ch=line[i];
+    if(inQ){
+      if(ch==='"'){ if(line[i+1]==='"'){ cur+='"'; i++; } else inQ=false; }
+      else cur+=ch;
+    } else {
+      if(ch==='"') inQ=true;
+      else if(ch===","){ out.push(cur); cur=""; }
+      else cur+=ch;
+    }
+  }
+  out.push(cur);
+  return out;
+}
+function poolIdByName(name){
+  name = String(name||"").trim().toLowerCase();
+  const p = POOLS.find(x=>x.name.toLowerCase()===name || x.id===name);
+  return p ? p.id : null;
+}
+/* Accepts the queue's own "MM/DD" export dates (year assumed, future rolls back)
+   plus YYYY-MM-DD and MM/DD/YYYY defensively. Returns epoch ms or null. */
+function msFrom(dateStr, timeStr){
+  dateStr=String(dateStr||"").trim(); timeStr=String(timeStr||"").trim();
+  let y,m,d,mm, yearless=false;
+  if((mm=dateStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/))){ y=+mm[1]; m=+mm[2]; d=+mm[3]; }
+  else if((mm=dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/))){ m=+mm[1]; d=+mm[2]; y=+mm[3]; }
+  else if((mm=dateStr.match(/^(\d{1,2})\/(\d{1,2})$/))){ m=+mm[1]; d=+mm[2]; y=new Date().getFullYear(); yearless=true; }
+  else return null;
+  const tm=timeStr.match(/^(\d{1,2}):(\d{2})/); if(!tm) return null;
+  let dt=new Date(y, m-1, d, +tm[1], +tm[2]);
+  if(isNaN(dt) || dt.getMonth()!==m-1) return null;    // rejects 13/45 etc.
+  if(yearless && dt.getTime() > Date.now()+DAY) dt=new Date(y-1, m-1, d, +tm[1], +tm[2]);
+  return dt.getTime();
+}
+/* header: date,time,pool,free_cl_ppm,ph,temp_f,flow_gpm,initials,violation,entered */
+function parseCSV(text){
+  text = String(text||"").replace(/^﻿/,"");
+  const lines = text.split(/\r?\n/).filter(l=>l.trim()!=="");
+  if(!lines.length) return { rows:[], skipped:0, error:"empty file" };
+  const head = splitCSVLine(lines[0]).map(h=>h.trim().toLowerCase());
+  const idx = n => head.indexOf(n);
+  const iD=idx("date"), iT=idx("time"), iP=idx("pool"),
+        iFC=idx("free_cl_ppm"), iPH=idx("ph"), iTe=idx("temp_f"), iFl=idx("flow_gpm");
+  if(iD<0 || iT<0 || iP<0)
+    return { rows:[], skipped:lines.length-1, error:"header must include date, time, pool" };
+  const rows=[]; let skipped=0;
+  for(let li=1; li<lines.length; li++){
+    const c = splitCSVLine(lines[li]);
+    const poolId = poolIdByName(c[iP]);
+    const t = msFrom(c[iD], c[iT]);
+    if(!poolId || t==null){ skipped++; continue; }
+    const g = i => i>=0 && i<c.length ? num(c[i]) : null;
+    const r = { poolId, t, fc:g(iFC), ph:g(iPH), temp:g(iTe), flow:g(iFl), src:"import" };
+    if(r.fc==null && r.ph==null && r.temp==null && r.flow==null){ skipped++; continue; }
+    rows.push(r);
+  }
+  return { rows, skipped };
+}
+
+/* ================= merge & filter ================= */
+/* dedupe key at minute granularity — reimported queue exports match live rows */
+function keyOf(r){
+  const d = new Date(r.t);
+  return r.poolId+"|"+d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate())
+       +" "+pad2(d.getHours())+":"+pad2(d.getMinutes());
+}
+function mergeReadings(queueRows, importedRows){
+  const seen = new Set(), out = [];
+  for(const r of queueRows){ const k=keyOf(r); if(!seen.has(k)){ seen.add(k); out.push(r); } }
+  for(const r of importedRows){ const k=keyOf(r); if(!seen.has(k)){ seen.add(k); out.push(r); } }
+  out.sort((a,b)=>a.t-b.t);
+  return out;
+}
+function importedAsRows(){
+  return S.imported
+    .map(r=>({ poolId:r.poolId, t:+r.t, fc:num(r.fc), ph:num(r.ph), temp:num(r.temp), flow:num(r.flow), src:"import" }))
+    .filter(r=>Number.isFinite(r.t));
+}
+function currentData(){
+  const all = mergeReadings(readQueue(), importedAsRows()).filter(r=>r.poolId===S.active);
+  if(S.range==="all") return all;
+  const cutoff = Date.now() - (+S.range)*DAY;
+  return all.filter(r=>r.t>=cutoff);
+}
+
+/* ================= chart math (pure, testable) ================= */
+/* break the polyline where consecutive points are more than gapDays apart */
+function segmentsFor(pts, gapDays){
+  const gap=(gapDays||GAP_DAYS)*DAY, segs=[];
+  let cur=[];
+  for(const p of pts){
+    if(cur.length && p.t - cur[cur.length-1].t > gap){ segs.push(cur); cur=[]; }
+    cur.push(p);
+  }
+  if(cur.length) segs.push(cur);
+  return segs;
+}
+function inBand(v, band){
+  if(!band) return true;
+  return v >= band[0]-1e-9 && v <= band[1]+1e-9;
+}
+/* fold onto Mon..Sun buckets: {label, n, mean, min, max} per weekday */
+function weekdayFold(pts){
+  const order=[1,2,3,4,5,6,0], names=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  return order.map(dow=>{
+    const vs = pts.filter(p=>new Date(p.t).getDay()===dow).map(p=>p.v);
+    if(!vs.length) return { label:names[dow], n:0, mean:null, min:null, max:null };
+    const mean = vs.reduce((a,b)=>a+b,0)/vs.length;
+    return { label:names[dow], n:vs.length, mean,
+             min:Math.min.apply(null,vs), max:Math.max.apply(null,vs) };
+  });
+}
+
+/* ================= chart rendering (vanilla SVG) ================= */
+const CW=700, CH=170, PL=48, PR=10, PT=12, PB=26;
+function niceTicks(lo, hi, n){
+  const span=hi-lo || 1, step0=span/(n-1);
+  const mag=Math.pow(10, Math.floor(Math.log10(step0)));
+  const step=[1,2,2.5,5,10].map(m=>m*mag).find(s=>span/s<=n-1+1e-9) || 10*mag;
+  const t0=Math.ceil(lo/step)*step, out=[];
+  for(let t=t0; t<=hi+1e-9; t+=step) out.push(Math.round(t*1000)/1000);
+  return out;
+}
+function fmtTick(v){ return Math.abs(v)>=100 ? String(Math.round(v)) : String(Math.round(v*10)/10); }
+function fmtDay(ms){ const d=new Date(ms); return (d.getMonth()+1)+"/"+d.getDate(); }
+
+function chartSVG(metric, rows){
+  const p = pool(), band = metric.band(p);
+  const pts = rows.filter(r=>r[metric.key]!=null).map(r=>({t:r.t, v:r[metric.key]}));
+  if(!pts.length) return { svg:null, stat:"no data" };
+
+  // domains
+  let t0, t1;
+  if(S.range==="all"){ t0=pts[0].t; t1=pts[pts.length-1].t; if(t1-t0 < DAY){ t0-=DAY/2; t1+=DAY/2; } }
+  else { t1=Date.now(); t0=t1-(+S.range)*DAY; }
+  let vs=pts.map(p2=>p2.v), lo=Math.min.apply(null,vs), hi=Math.max.apply(null,vs);
+  if(band){ lo=Math.min(lo,band[0]); hi=Math.max(hi,band[1]); }
+  const vpad=(hi-lo)*0.12 || 1; lo-=vpad; hi+=vpad;
+  const X=t=>PL+(t-t0)/(t1-t0)*(CW-PL-PR);
+  const Y=v=>PT+(1-(v-lo)/(hi-lo))*(CH-PT-PB);
+  const el=[];
+
+  // compliance band behind everything
+  if(band) el.push('<rect x="'+PL+'" y="'+Y(band[1])+'" width="'+(CW-PL-PR)+'" height="'+
+    Math.max(0,Y(band[0])-Y(band[1]))+'" fill="var(--ok)" opacity="0.10"/>'+
+    '<line x1="'+PL+'" y1="'+Y(band[0])+'" x2="'+(CW-PR)+'" y2="'+Y(band[0])+'" stroke="var(--ok)" stroke-width="0.8" opacity=".5" stroke-dasharray="4 3"/>'+
+    '<line x1="'+PL+'" y1="'+Y(band[1])+'" x2="'+(CW-PR)+'" y2="'+Y(band[1])+'" stroke="var(--ok)" stroke-width="0.8" opacity=".5" stroke-dasharray="4 3"/>');
+
+  // y ticks
+  for(const tv of niceTicks(lo,hi,4)){
+    el.push('<line x1="'+PL+'" y1="'+Y(tv)+'" x2="'+(CW-PR)+'" y2="'+Y(tv)+'" stroke="var(--line)" stroke-width="0.6"/>'+
+      '<text x="'+(PL-6)+'" y="'+(Y(tv)+3.5)+'" fill="var(--faint)" font-size="10.5" text-anchor="end" style="font-family:var(--mono)">'+fmtTick(tv)+'</text>');
+  }
+  let viol=0;
+  if(S.mode==="dow"){
+    // weekday fold: whisker (min..max) + mean dot per bucket
+    const buckets = weekdayFold(pts);
+    const bw=(CW-PL-PR)/7;
+    buckets.forEach((b,i)=>{
+      const cx=PL+bw*(i+0.5);
+      el.push('<text x="'+cx+'" y="'+(CH-8)+'" fill="var(--faint)" font-size="10.5" text-anchor="middle" style="font-family:var(--mono)">'+b.label+'</text>');
+      if(b.n===0) return;
+      const bad = band && !(inBand(b.min,band)&&inBand(b.max,band));
+      el.push('<line x1="'+cx+'" y1="'+Y(b.min)+'" x2="'+cx+'" y2="'+Y(b.max)+'" stroke="'+(bad?"var(--acid)":"var(--water)")+'" stroke-width="2.4" opacity=".55" stroke-linecap="round"/>');
+      el.push('<circle cx="'+cx+'" cy="'+Y(b.mean)+'" r="4" fill="'+(band&&!inBand(b.mean,band)?"var(--acid)":"var(--water)")+'"/>');
+      el.push('<text x="'+cx+'" y="'+(Y(b.max)-6)+'" fill="var(--faint)" font-size="9" text-anchor="middle" style="font-family:var(--mono)">'+b.n+'</text>');
+    });
+    viol = pts.filter(q=>band && !inBand(q.v,band)).length;
+  } else {
+    // x ticks
+    for(const tv of niceTicks(t0,t1,5)){
+      el.push('<line x1="'+X(tv)+'" y1="'+(CH-PB)+'" x2="'+X(tv)+'" y2="'+(CH-PB+4)+'" stroke="var(--faint)" stroke-width="1"/>'+
+        '<text x="'+X(tv)+'" y="'+(CH-8)+'" fill="var(--faint)" font-size="10.5" text-anchor="middle" style="font-family:var(--mono)">'+fmtDay(tv)+'</text>');
+    }
+    // polyline segments (gap rule), then point markers
+    for(const seg of segmentsFor(pts, GAP_DAYS)){
+      if(seg.length>1)
+        el.push('<polyline points="'+seg.map(q=>X(q.t).toFixed(1)+","+Y(q.v).toFixed(1)).join(" ")+
+          '" fill="none" stroke="var(--water)" stroke-width="1.8" stroke-linejoin="round"/>');
+    }
+    for(const q of pts){
+      const bad = !inBand(q.v, band);
+      if(bad) viol++;
+      el.push('<circle cx="'+X(q.t).toFixed(1)+'" cy="'+Y(q.v).toFixed(1)+'" r="'+(bad?4:2.6)+
+        '" fill="'+(bad?"var(--acid)":"var(--water)")+'"'+(bad?' stroke="var(--bg)" stroke-width="1"':"")+'/>');
+    }
+  }
+  const last = pts[pts.length-1];
+  const stat = '<b>'+fmtTick(last.v)+'</b> latest · '+pts.length+' pts'+
+    (band ? (viol ? ' · <span class="viol">'+viol+' out of band</span>' : ' · all in band') : "");
+  return { svg:'<svg viewBox="0 0 '+CW+' '+CH+'" role="img" aria-label="'+esc(metric.label)+' trend">'+el.join("")+'</svg>', stat };
+}
+
+/* ================= render ================= */
+function renderPools(){
+  $("pools").innerHTML = POOLS.map(p=>
+    '<button class="pool" type="button" data-id="'+p.id+'" aria-pressed="'+(p.id===S.active)+'">'+
+    '<span class="pname">'+esc(p.name)+'</span>'+
+    '<span class="pvol">'+p.gal.toLocaleString()+' gal</span></button>').join("");
+}
+function renderSegs(){
+  document.querySelectorAll("[data-range]").forEach(b=>b.setAttribute("aria-pressed", b.dataset.range===S.range));
+  document.querySelectorAll("[data-mode]").forEach(b=>b.setAttribute("aria-pressed", b.dataset.mode===S.mode));
+}
+function renderCharts(){
+  const rows = currentData();
+  const q = readQueue().filter(r=>r.poolId===S.active).length;
+  const imp = importedAsRows().filter(r=>r.poolId===S.active).length;
+  $("srcline").textContent = "queue "+q+" · imported "+imp;
+  $("ptCount").textContent = rows.length ? rows.length+" readings in range" : "";
+  if(!rows.length){
+    $("charts").innerHTML = '<div class="empty">No readings for '+esc(pool().name)+
+      ' in this range.<br>Log readings in Reading Queue on this device, or import its CSV export below.</div>';
+    return;
+  }
+  $("charts").innerHTML = METRICS.map(m=>{
+    const c = chartSVG(m, rows);
+    return '<div class="card"><div class="chead"><span class="cname">'+esc(m.label)+
+      '</span><span class="cstat">'+(c.svg?c.stat:"no data")+'</span></div>'+
+      (c.svg || '<div style="padding:14px;color:var(--faint);font-size:.8rem">No '+esc(m.label)+' values logged.</div>')+
+      '</div>';
+  }).join("");
+}
+function renderAll(){ renderPools(); renderSegs(); renderCharts(); }
+
+/* ================= toast ================= */
+function toast(msg){
+  const t=$("toast"); t.textContent=msg;
+  t.classList.add("show"); clearTimeout(toast._t);
+  toast._t=setTimeout(()=>t.classList.remove("show"),2200);
+}
+
+/* ================= events ================= */
+$("pools").addEventListener("click", e=>{
+  const b=e.target.closest(".pool"); if(!b) return;
+  S.active=b.dataset.id; save(); renderAll();
+});
+document.querySelectorAll("[data-range]").forEach(b=>b.addEventListener("click", ()=>{
+  S.range=b.dataset.range; save(); renderSegs(); renderCharts();
+}));
+document.querySelectorAll("[data-mode]").forEach(b=>b.addEventListener("click", ()=>{
+  S.mode=b.dataset.mode; save(); renderSegs(); renderCharts();
+}));
+$("importBtn").addEventListener("click", ()=>$("fileIn").click());
+$("fileIn").addEventListener("change", ()=>{
+  const f=$("fileIn").files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=()=>{
+    const res=parseCSV(rd.result);
+    if(res.error){ toast("Import failed — "+res.error); $("fileIn").value=""; return; }
+    // merge into stored imports, dedupe against existing imports AND live queue
+    const have=new Set(mergeReadings(readQueue(), importedAsRows()).map(keyOf));
+    let added=0;
+    for(const r of res.rows){
+      if(have.has(keyOf(r))) continue;
+      have.add(keyOf(r));
+      S.imported.push({ poolId:r.poolId, t:r.t, fc:r.fc, ph:r.ph, temp:r.temp, flow:r.flow });
+      added++;
+    }
+    save(); renderCharts();
+    toast("Imported "+added+" new reading"+(added!==1?"s":"")+
+      (res.skipped?" · skipped "+res.skipped+" malformed":"")+
+      (res.rows.length-added?" · "+(res.rows.length-added)+" duplicates":""));
+    $("fileIn").value="";
+  };
+  rd.readAsText(f);
+});
+$("clearImp").addEventListener("click", ()=>{
+  if(!S.imported.length){ toast("Nothing imported"); return; }
+  if(!confirm("Delete all "+S.imported.length+" imported readings? Live queue data is unaffected.")) return;
+  S.imported=[]; save(); renderCharts(); toast("Imported history cleared");
+});
+
+/* refresh from the queue when returning to the tab */
+document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) renderCharts(); });
+
+renderAll();
+</script>
+</body>
+</html>

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Charting Pool Chemistry Drift from Logged Readings</title>
+  <link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+  <header>
+    <nav>
+      <ul>
+        <li><a href="../../index.html">Home</a></li>
+        <li><a href="../../travelmap/">Travel Map</a></li>
+        <li><a href="../index.html">Blog</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <h1>Charting Pool Chemistry Drift from Logged Readings</h1>
+      <time datetime="2026-07-01">July 2026</time>
+
+      <p>Chem Trends is a single-file, offline dashboard that renders per-pool time-series of free chlorine, pH, temperature, and flow from readings already being logged in Reading Queue [1]. Shaded compliance bands sit behind each line, out-of-range readings get red markers, and a by-weekday view folds the history onto Mon–Sun buckets. It reads the queue's data without touching it and accepts CSV imports of the queue's own export format [2].</p>
+
+      <h2>The problem</h2>
+      <p>Individual chemical readings answer "is the water OK right now"; nobody looks at forty of them in a table and sees the slow acid creep that started three weeks ago, or that free chlorine sags every Saturday afternoon when the swim-lesson load peaks. The data to see those patterns is already being captured — the queue logs every reading with a timestamp — it just has no rendering. Chem Trends is that rendering: drift and periodicity made visible, with the compliance range drawn behind the line so an excursion is obvious at a glance.</p>
+
+      <h2>How it works</h2>
+      <p>Pick a body of water (the same four as the rest of the suite) and a time range (14 days, 45 days, all). Four stacked charts render FC, pH, temperature, and flow. FC and pH carry shaded compliance bands — the body's code minimum to 10 ppm for FC, 7.2–8.0 for pH — and any reading outside its band draws as an enlarged red dot. The <strong>By weekday</strong> toggle folds every reading in range onto Monday–Sunday buckets, drawing each weekday's min–max whisker and mean, which is the direct answer to "do we always sag on Saturdays?"</p>
+
+      <figure>
+        <img loading="lazy" src="/kimberlytravel/blog/img/PLACEHOLDER-chemtrends-charts.png" alt="Chem Trends showing stacked FC and pH charts with shaded compliance bands and red out-of-band markers">
+        <figcaption>Stacked metric charts with compliance bands and out-of-band markers. Placeholder pending a real screenshot.</figcaption>
+      </figure>
+
+      <p>Data comes from two sources, merged and deduplicated at minute granularity. The live source is Reading Queue's log on the same device, read directly from <code>localStorage</code> — strictly read-only. The second source is CSV import: the parser accepts the queue's own export header, skips malformed rows rather than failing, and persists imported rows under Chem Trends' own key, so charted history survives the queue's "clear entered" housekeeping. A reading's plotted time is its capture date combined with the operator-editable time field, mirroring how the queue itself displays backfilled readings.</p>
+
+      <h2>The rendering rules</h2>
+      <p>The charts are hand-built inline SVG — axis, gridlines, band rectangles, polyline, markers — with no charting library. Two rules matter more than they look:</p>
+      <ul>
+        <li><strong>The gap rule.</strong> Consecutive points more than 3 days apart are not connected; the polyline breaks. A line drawn across a two-week logging gap is an invented trend, and inventing data on a compliance chart is worse than showing a hole.</li>
+        <li><strong>Bands are ranges, not targets.</strong> The shaded region is the legal envelope (FC: body minimum to 10 ppm; pH: 7.2–8.0), the same thresholds Pump Room and Reading Queue enforce [2][3]. A line hugging the band edge is technically compliant and visibly about not to be.</li>
+      </ul>
+
+      <h2>Editing the config</h2>
+      <p>The <code>POOLS</code> array at the top of the <code>&lt;script&gt;</code> block carries the four bodies with volumes and FC minimums, copied verbatim from Pump Room — keep them in sync if the facility changes. Beside it: <code>MAX_FC</code>/<code>PH_LO</code>/<code>PH_HI</code> (band edges), <code>GAP_DAYS</code> (the 3-day gap rule), and the <code>METRICS</code> table that defines each chart and its band. Imported rows live under <code>chemtrends.v1</code>; the queue's <code>readingqueue.v1</code> is never written.</p>
+
+      <h2>Limitations</h2>
+      <ul>
+        <li><strong>No LSI trend.</strong> The queue logs FC, pH, temperature, and flow only — not alkalinity, calcium hardness, or CYA — so the saturation index is not computable from this data. LSI stays a point-in-time number in Pump Room.</li>
+        <li><strong><code>localStorage</code> is per-device.</strong> The dashboard shows the logging history of the device it runs on. The CSV export/import cycle is the merge path across devices — export from the tablet, import on the office machine.</li>
+        <li>CSV dates in the queue's export carry no year (MM/DD); the importer assumes the current year and rolls a future-dated reading back one year. Multi-year archives should be imported in the year they were exported.</li>
+        <li>It is a viewer, not a logger. Readings are captured in Reading Queue; this tool adds nothing to the record.</li>
+      </ul>
+
+      <section>
+        <h2>References</h2>
+        <ol>
+          <li><a href="../../tools/chemtrends.html">Chem Trends Dashboard</a></li>
+          <li><a href="../../tools/readingqueue.html">Reading Queue</a> — the data source, and the origin of the CSV format this tool imports.</li>
+          <li><a href="../../tools/pumproom.html">Pump Room Chemistry Calculator</a> — shares the same pool volumes and FC/pH thresholds.</li>
+        </ol>
+      </section>
+    </article>
+  </main>
+
+  <footer>
+    <hr>
+    <p>This website's source code is open and available on <a href="https://github.com/mds08011/kimberlytravel">Github</a>.</p>
+  </footer>
+</body>
+</html>
