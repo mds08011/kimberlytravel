@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<!--
+  STRIPE PLAN — Stripe Sequence Planner
+  v1.0.0 · 2026-07-09
+  Fiber-arts suite, companion to colorwork.html / rowcounter.html / skeinmath.html.
+  Single-file, offline, zero dependencies.
+  Build an ordered stripe sequence (color × rows, repeated ×N), see the fabric
+  to scale at your row gauge, read it back as a merged row schedule
+  ("Rows 1-6: A"), and get per-color totals: rows, share, apportioned yardage,
+  and whether each color can be carried up the side or must be cut.
+  Multiple named plans persist in localStorage (stripeplan.v1).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1b1512">
+<title>Stripe Plan — Sequence Planner</title>
+<style>
+  :root{
+    --bg:#1b1512; --panel:#241c17; --panel2:#2d231c; --line:#3e3128;
+    --ink:#f0e7dc; --dim:#b3a494; --faint:#7d7062;
+    --madder:#e08484; --indigo:#8fa8dc; --weld:#d9a441; --leaf:#8fbf96;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --serif:"Iowan Old Style",Palatino,"Palatino Linotype",Georgia,serif;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  [hidden]{display:none !important}
+  html{-webkit-text-size-adjust:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;
+    line-height:1.5;padding:0 14px calc(28px + env(safe-area-inset-bottom))}
+  .wrap{max-width:680px;margin:0 auto}
+
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+    padding:20px 2px 14px;border-bottom:1px solid var(--line)}
+  h1{font-family:var(--serif);font-size:1.45rem;font-weight:600;font-style:italic}
+  h1 .amp{color:var(--madder)}
+  header .ver{font-family:var(--mono);font-size:.7rem;color:var(--faint)}
+
+  section{margin-top:20px}
+  h2{font-family:var(--serif);font-size:1.08rem;font-weight:600;font-style:italic;
+    display:flex;align-items:center;gap:10px;margin-bottom:4px}
+  h2::after{content:"";flex:1;height:1px;background:var(--line)}
+  .sub{font-size:.8rem;color:var(--dim);margin-bottom:12px}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+
+  .toolrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  select.big{flex:1;min-width:140px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:8px;color:var(--ink);font-size:.92rem;padding:10px;appearance:none}
+  .btn{appearance:none;border:1px solid var(--line);background:var(--panel2);color:var(--ink);
+    border-radius:8px;padding:9px 13px;font-size:.83rem;font-weight:600;cursor:pointer}
+  .btn:active{background:var(--panel)}
+  .btn.primary{border-color:var(--madder);color:var(--madder)}
+  .btn.small{padding:6px 10px;font-size:.76rem}
+  .btn:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--madder);outline-offset:2px}
+
+  /* palette */
+  .palette{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px;padding-bottom:12px}
+  .sw{width:34px;height:34px;border-radius:8px;border:2px solid var(--line);position:relative;flex:none}
+  .sw .tag{position:absolute;left:50%;bottom:-15px;transform:translateX(-50%);
+    font-family:var(--mono);font-size:.6rem;color:var(--faint)}
+
+  /* stripe rows */
+  .stripes{display:flex;flex-direction:column;gap:8px}
+  .strow{display:flex;gap:8px;align-items:center;background:var(--panel2);
+    border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+  .strow .csel{background:var(--panel);border:1px solid var(--line);border-radius:7px;
+    color:var(--ink);font-size:.85rem;padding:7px 8px;appearance:none;flex:1;min-width:90px}
+  .strow .rows{width:74px;background:var(--panel);border:1px solid var(--line);border-radius:7px;
+    color:var(--ink);font-family:var(--mono);font-size:1rem;font-weight:600;padding:7px 9px;text-align:right}
+  .strow .lbl{font-size:.68rem;color:var(--faint);letter-spacing:.08em;text-transform:uppercase}
+  .strow .mv{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--dim);
+    border-radius:7px;width:30px;height:34px;cursor:pointer;font-size:.85rem;flex:none}
+  .strow .mv:disabled{opacity:.3;cursor:default}
+  input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  input[type=number]{-moz-appearance:textfield}
+
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+  @media(max-width:430px){.grid{grid-template-columns:1fr 1fr}}
+  .field{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+  .field label{display:block;font-size:.62rem;font-weight:700;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--dim);margin-bottom:3px}
+  .field input{width:100%;background:transparent;border:none;color:var(--ink);
+    font-family:var(--mono);font-size:1.1rem;font-weight:600;padding:0}
+  .field input:focus{outline:none}
+  .field:focus-within{border-color:var(--madder)}
+
+  .facts{font-family:var(--mono);font-size:.78rem;color:var(--dim);margin-top:12px;line-height:1.6}
+  .facts b{color:var(--ink)}
+
+  /* preview */
+  .previewcard{background:#fbf7f0;border:1px solid var(--line);border-radius:10px;padding:10px}
+  .previewcard svg{display:block;width:100%;height:auto}
+
+  /* per-color table */
+  table{border-collapse:collapse;width:100%;margin-top:4px}
+  th,td{padding:7px 9px;border-bottom:1px solid var(--line);text-align:left;font-size:.84rem}
+  th{font-size:.62rem;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:var(--dim)}
+  td.n{font-family:var(--mono)}
+  td .chip{display:inline-block;width:16px;height:16px;border-radius:4px;
+    border:1px solid var(--line);vertical-align:-3px;margin-right:7px}
+  td .carry{color:var(--leaf)} td .cut{color:var(--weld)}
+
+  pre.sched{background:var(--panel2);border:1px solid var(--line);border-radius:10px;
+    padding:12px;font-family:var(--mono);font-size:.78rem;line-height:1.7;color:var(--dim);
+    white-space:pre;overflow-x:auto;max-height:280px;overflow-y:auto;margin-top:12px}
+
+  .rowbtns{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .note{margin-top:8px;font-size:.76rem;color:var(--faint);font-style:italic;font-family:var(--serif)}
+
+  footer{margin-top:28px;border-top:1px solid var(--line);padding-top:12px;
+    font-size:.75rem;color:var(--faint);line-height:1.65}
+  footer code{font-family:var(--mono)}
+
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(8px);
+    background:var(--panel2);border:1px solid var(--madder);color:var(--ink);border-radius:8px;
+    padding:8px 16px;font-size:.85rem;opacity:0;pointer-events:none;
+    transition:opacity .2s,transform .2s;max-width:90vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media (prefers-reduced-motion:reduce){.toast{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Stripe <span class="amp">Plan</span></h1>
+    <span class="ver">sequence planner · v1.0.0 · offline</span>
+  </header>
+
+  <section aria-label="Plan">
+    <div class="toolrow">
+      <select class="big" id="planSel" aria-label="Plan"></select>
+      <button class="btn" id="planNew" type="button">New</button>
+      <button class="btn" id="planRen" type="button">Rename</button>
+      <button class="btn" id="planDel" type="button">Delete</button>
+    </div>
+  </section>
+
+  <section aria-label="Sequence">
+    <h2>Sequence</h2>
+    <p class="sub">One repeat of the stripe pattern, top of the list knit first.</p>
+    <div class="card">
+      <div class="palette" id="palette"></div>
+      <div class="toolrow" style="margin-bottom:12px">
+        <button class="btn small" id="addColor" type="button">＋ Add color</button>
+        <button class="btn small" id="delColor" type="button">− Remove last color</button>
+        <input id="colorIn" type="color" value="#8fa8dc" style="position:absolute;opacity:0;pointer-events:none">
+      </div>
+      <div class="stripes" id="stripes"></div>
+      <div class="rowbtns">
+        <button class="btn primary" id="addStripe" type="button">＋ Add stripe</button>
+      </div>
+      <div class="grid">
+        <div class="field"><label for="fReps">Repeat sequence ×</label>
+          <input id="fReps" type="number" inputmode="numeric" min="1" max="99" step="1"></div>
+        <div class="field"><label for="fRowG">Rows / 4 in</label>
+          <input id="fRowG" type="number" inputmode="decimal" min="4" max="80" step="0.5"></div>
+        <div class="field"><label for="fYd">Pattern total yd (opt.)</label>
+          <input id="fYd" type="number" inputmode="decimal" min="0" step="1" placeholder="—"></div>
+      </div>
+      <div class="facts" id="facts"></div>
+    </div>
+  </section>
+
+  <section aria-label="Preview">
+    <h2>Fabric preview</h2>
+    <p class="sub">Drawn to scale at your row gauge — dashed lines mark repeat boundaries.</p>
+    <div class="previewcard"><svg id="preview"></svg></div>
+  </section>
+
+  <section aria-label="Per color">
+    <h2>Per color</h2>
+    <p class="sub">Rows, share of the fabric, apportioned yardage, and carry-or-cut along the edge.</p>
+    <div class="card">
+      <div id="colorTable"></div>
+      <div class="note">Carry verdicts assume the yarn travels up one edge; over more than
+        6 rows an uncaught carry snags — cut and weave instead, or catch it mid-way.</div>
+    </div>
+  </section>
+
+  <section aria-label="Row schedule">
+    <h2>Row schedule</h2>
+    <p class="sub">Merged ranges across repeats — pin the change rows in Row &amp; Repeat.</p>
+    <pre class="sched" id="sched"></pre>
+    <div class="rowbtns">
+      <button class="btn primary" id="copySched" type="button">Copy schedule</button>
+    </div>
+  </section>
+
+  <footer>
+    Yardage is apportioned from the pattern's total by each color's share of the rows —
+    no invented per-stitch constants, so give it the pattern's real total. Adjacent same-color
+    stripes merge in the schedule, including across a repeat boundary. Carry-or-cut checks the
+    longest gap between a color's uses against the <b id="ftCarry"></b>-row carry limit.
+    Plans live in this browser only (<code>localStorage</code>); the copied schedule is the
+    portable form.
+  </footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ============ CONFIG ============ */
+const CARRY_MAX = 6;       // longest gap (rows) a color can be carried up the edge
+const MAX_COLORS = 12;
+const MAX_TOTAL_ROWS = 2000;
+const DEFAULT_PALETTE = ["#f2ead8", "#8a4a45", "#33415e", "#c9a04a"];  // MC + A B C
+const LS_KEY = "stripeplan.v1";
+
+/* ================= state ================= */
+let S = load();
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw){ const p = JSON.parse(raw); if(p && p.plans) return p; }
+  }catch(e){}
+  const id = mkid();
+  return { active:id, plans:{ [id]: mkplan("My stripes") } };
+}
+function mkid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+function mkplan(name){
+  return { name, palette:DEFAULT_PALETTE.slice(),
+    stripes:[ {c:1,rows:6}, {c:0,rows:2}, {c:2,rows:4}, {c:0,rows:2} ],
+    repeats:4, rowG:24, totalYd:"", updated:Date.now() };
+}
+function save(){
+  P().updated = Date.now();
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){}
+}
+const $   = id => document.getElementById(id);
+const P   = () => S.plans[S.active];
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const num = v => { const n=parseFloat(v); return Number.isFinite(n) ? n : null; };
+const clampi = (v,lo,hi) => Math.max(lo, Math.min(hi, Math.round(v)));
+const label = i => i===0 ? "MC" : String.fromCharCode(64+i);
+const r1 = x => Math.round(x*10)/10;
+
+/* ================= pure plan math (testable) ================= */
+/* expand ×repeats and merge adjacent same-color blocks (incl. across boundaries) */
+function mergedBlocks(stripes, repeats){
+  const out=[];
+  for(let r=0; r<repeats; r++)
+    for(const st of stripes){
+      const rows=+st.rows||0;
+      if(rows<1) continue;
+      if(out.length && out[out.length-1].c===st.c) out[out.length-1].rows+=rows;
+      else out.push({c:st.c, rows:rows});
+    }
+  return out;
+}
+/* blocks -> [{c, from, to}] 1-based inclusive row ranges */
+function blockRanges(blocks){
+  const out=[]; let row=1;
+  for(const b of blocks){ out.push({c:b.c, from:row, to:row+b.rows-1}); row+=b.rows; }
+  return out;
+}
+function totalRows(blocks){ return blocks.reduce((a,b)=>a+b.rows,0); }
+/* rows per color index */
+function perColorRows(blocks, nColors){
+  const rows=new Array(nColors).fill(0);
+  for(const b of blocks) if(b.c<nColors) rows[b.c]+=b.rows;
+  return rows;
+}
+/* apportion total yardage by row share; largest-remainder so the sum matches */
+function apportionYd(total, rowsPer, totRows){
+  if(!total || !totRows) return rowsPer.map(()=>null);
+  const exact=rowsPer.map(r=>total*r/totRows);
+  const base=exact.map(Math.floor);
+  let left=Math.round(total)-base.reduce((a,b)=>a+b,0);
+  const order=exact.map((v,i)=>[v-base[i],i]).sort((a,b)=>b[0]-a[0]);
+  for(let k=0; k<order.length && left>0; k++,left--) base[order[k][1]]++;
+  return rowsPer.map((r,i)=>r>0?base[i]:null);
+}
+/* per color: number of use blocks, longest gap between uses, cuts needed */
+function carryAnalysis(blocks, nColors, carryMax){
+  const out=[];
+  for(let c=0; c<nColors; c++){
+    const uses=[];
+    let row=1;
+    for(const b of blocks){ if(b.c===c) uses.push({from:row, to:row+b.rows-1}); row+=b.rows; }
+    if(!uses.length){ out.push(null); continue; }
+    let maxGap=0, cuts=0;
+    for(let i=1;i<uses.length;i++){
+      const gap=uses[i].from-uses[i-1].to-1;
+      if(gap>maxGap) maxGap=gap;
+      if(gap>carryMax) cuts++;
+    }
+    out.push({ blocks:uses.length, maxGap, cuts,
+      verdict: uses.length===1 ? "single block" : (maxGap<=carryMax ? "carry up" : "cut ×"+cuts) });
+  }
+  return out;
+}
+function scheduleText(plan){
+  const blocks=mergedBlocks(plan.stripes, plan.repeats);
+  const ranges=blockRanges(blocks);
+  const tot=totalRows(blocks);
+  const lenIn=plan.rowG>0 ? tot/plan.rowG*4 : null;
+  const head="STRIPE PLAN — "+plan.name+" — "+plan.repeats+" × "+plan.stripes.length+
+    "-stripe sequence = "+tot+" rows"+(lenIn?" ≈ "+r1(lenIn)+" in at "+plan.rowG+" rows/4in":"");
+  const lines=ranges.map(g=>"Rows "+(g.from===g.to?g.from:g.from+"–"+g.to)+": "+label(g.c));
+  return [head, ...lines].join("\n");
+}
+
+/* ================= render ================= */
+function renderPlans(){
+  const ids=Object.keys(S.plans).sort((a,b)=>S.plans[b].updated-S.plans[a].updated);
+  $("planSel").innerHTML = ids.map(id=>
+    '<option value="'+id+'"'+(id===S.active?" selected":"")+'>'+esc(S.plans[id].name)+'</option>').join("");
+}
+function renderPalette(){
+  $("palette").innerHTML = P().palette.map((h,i)=>
+    '<span class="sw" style="background:'+esc(h)+'"><span class="tag">'+label(i)+'</span></span>').join("");
+}
+function renderStripes(){
+  const p=P();
+  $("stripes").innerHTML = p.stripes.map((st,i)=>
+    '<div class="strow" data-i="'+i+'">'+
+    '<span class="lbl">'+(i+1)+'</span>'+
+    '<select class="csel" data-act="color" aria-label="Stripe '+(i+1)+' color">'+
+      p.palette.map((h,ci)=>'<option value="'+ci+'"'+(ci===st.c?" selected":"")+'>'+label(ci)+'</option>').join("")+
+    '</select>'+
+    '<input class="rows" data-act="rows" type="number" inputmode="numeric" min="1" max="200" step="1" value="'+st.rows+'" aria-label="Stripe '+(i+1)+' rows">'+
+    '<span class="lbl">rows</span>'+
+    '<button class="mv" data-act="up" type="button" aria-label="Move up"'+(i===0?" disabled":"")+'>↑</button>'+
+    '<button class="mv" data-act="down" type="button" aria-label="Move down"'+(i===p.stripes.length-1?" disabled":"")+'>↓</button>'+
+    '<button class="mv" data-act="del" type="button" aria-label="Delete stripe">✕</button>'+
+    '</div>').join("");
+}
+function renderFields(){
+  const p=P();
+  $("fReps").value=p.repeats; $("fRowG").value=p.rowG; $("fYd").value=p.totalYd;
+}
+function renderFacts(){
+  const p=P(), blocks=mergedBlocks(p.stripes, p.repeats), tot=totalRows(blocks);
+  const seqRows=totalRows(mergedBlocks(p.stripes,1));
+  const lenIn=p.rowG>0 ? tot/p.rowG*4 : null;
+  $("facts").innerHTML = tot===0
+    ? "Add stripes to build the sequence."
+    : "one repeat <b>"+seqRows+" rows</b> · total <b>"+tot+" rows</b>"+
+      (lenIn ? " ≈ <b>"+r1(lenIn)+" in</b> of fabric at "+p.rowG+" rows / 4 in" : "");
+}
+function renderPreview(){
+  const p=P(), blocks=mergedBlocks(p.stripes, p.repeats), tot=totalRows(blocks);
+  const svg=$("preview");
+  if(!tot){ svg.setAttribute("viewBox","0 0 700 60"); svg.innerHTML=
+    '<text x="350" y="34" fill="#999" font-size="14" text-anchor="middle" font-family="system-ui">No stripes yet.</text>'; return; }
+  const W=700, rowPx=Math.max(2, Math.min(14, Math.floor(760/tot)));
+  const H=tot*rowPx+8;
+  const el=[]; let y=4;
+  for(const b of blocks){
+    el.push('<rect x="30" y="'+y+'" width="'+(W-70)+'" height="'+(b.rows*rowPx)+
+      '" fill="'+esc(p.palette[b.c]||"#ccc")+'"/>');
+    y+=b.rows*rowPx;
+  }
+  // repeat boundaries + row labels
+  const seqRows=totalRows(mergedBlocks(p.stripes,1));
+  for(let r=1; r<p.repeats; r++){
+    const by=4+seqRows*r*rowPx;
+    el.push('<line x1="26" y1="'+by+'" x2="'+(W-36)+'" y2="'+by+
+      '" stroke="#3a3028" stroke-width="1.2" stroke-dasharray="6 4"/>');
+    el.push('<text x="'+(W-32)+'" y="'+(by+4)+'" fill="#7d7062" font-size="11" font-family="ui-monospace,monospace">'+(seqRows*r+1)+'</text>');
+  }
+  el.push('<text x="'+(W-32)+'" y="12" fill="#7d7062" font-size="11" font-family="ui-monospace,monospace">1</text>');
+  el.push('<rect x="30" y="4" width="'+(W-70)+'" height="'+(tot*rowPx)+'" fill="none" stroke="#3a3028" stroke-width="1"/>');
+  svg.setAttribute("viewBox","0 0 "+W+" "+(H+4));
+  svg.innerHTML=el.join("");
+}
+function renderTable(){
+  const p=P(), blocks=mergedBlocks(p.stripes, p.repeats), tot=totalRows(blocks);
+  if(!tot){ $("colorTable").innerHTML='<div class="note">Add stripes first.</div>'; return; }
+  const rowsPer=perColorRows(blocks, p.palette.length);
+  const yd=apportionYd(num(p.totalYd), rowsPer, tot);
+  const carry=carryAnalysis(blocks, p.palette.length, CARRY_MAX);
+  const rows=p.palette.map((h,i)=>{
+    if(!rowsPer[i]) return "";
+    const ca=carry[i];
+    return '<tr><td><span class="chip" style="background:'+esc(h)+'"></span><b>'+label(i)+'</b></td>'+
+      '<td class="n">'+rowsPer[i]+'</td>'+
+      '<td class="n">'+Math.round(rowsPer[i]/tot*100)+'%</td>'+
+      '<td class="n">'+(yd[i]!=null?yd[i]+" yd":"—")+'</td>'+
+      '<td class="n">'+(ca ? '<span class="'+(ca.verdict.indexOf("cut")===0?"cut":"carry")+'">'+esc(ca.verdict)+'</span>'+
+        (ca.blocks>1 ? ' <span style="color:var(--faint)">(max gap '+ca.maxGap+')</span>' : "") : "—")+'</td></tr>';
+  }).join("");
+  $("colorTable").innerHTML='<table><thead><tr><th>Color</th><th>Rows</th><th>Share</th><th>Yardage</th><th>Edge</th></tr></thead>'+
+    '<tbody>'+rows+'</tbody></table>';
+}
+function renderSched(){ $("sched").textContent = scheduleText(P()); }
+function renderAll(){
+  renderPlans(); renderPalette(); renderStripes(); renderFields();
+  refresh();
+}
+function refresh(){ renderFacts(); renderPreview(); renderTable(); renderSched(); }
+
+/* ================= toast / copy ================= */
+function toast(m){ const t=$("toast"); t.textContent=m; t.classList.add("show");
+  clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove("show"),1900); }
+function copyText(text, ok){
+  const done=s=>toast(s?ok:"Copy failed — long-press to select");
+  if(navigator.clipboard && navigator.clipboard.writeText)
+    navigator.clipboard.writeText(text).then(()=>done(true)).catch(()=>fb());
+  else fb();
+  function fb(){const ta=document.createElement("textarea");ta.value=text;ta.style.position="fixed";
+    ta.style.opacity="0";document.body.appendChild(ta);ta.select();let o=false;
+    try{o=document.execCommand("copy");}catch(e){}document.body.removeChild(ta);done(o);}
+}
+$("copySched").addEventListener("click", ()=>{
+  const p=P();
+  const key=p.palette.map((h,i)=>label(i)+" = "+h).join("  ");
+  copyText(scheduleText(p)+"\n"+key, "Schedule copied");
+});
+
+/* ================= stripe events ================= */
+function guardTotal(p){
+  const tot=totalRows(mergedBlocks(p.stripes, p.repeats));
+  if(tot>MAX_TOTAL_ROWS){ toast("Over "+MAX_TOTAL_ROWS+" total rows — trim the plan"); return false; }
+  return true;
+}
+$("stripes").addEventListener("input", e=>{
+  const rowEl=e.target.closest(".strow"); if(!rowEl) return;
+  const i=+rowEl.dataset.i, p=P(), act=e.target.dataset.act;
+  if(act==="rows"){
+    const old=p.stripes[i].rows;
+    p.stripes[i].rows=clampi(num(e.target.value)||1, 1, 200);
+    if(!guardTotal(p)){ p.stripes[i].rows=old; e.target.value=old; return; }
+    save(); refresh();
+  }
+});
+$("stripes").addEventListener("change", e=>{
+  const rowEl=e.target.closest(".strow"); if(!rowEl) return;
+  const i=+rowEl.dataset.i, p=P();
+  if(e.target.dataset.act==="color"){
+    p.stripes[i].c=+e.target.value;
+    save(); renderStripes(); refresh();
+  }
+});
+$("stripes").addEventListener("click", e=>{
+  const b=e.target.closest("button.mv"); if(!b) return;
+  const rowEl=e.target.closest(".strow"), i=+rowEl.dataset.i, p=P();
+  const act=b.dataset.act;
+  if(act==="del"){ p.stripes.splice(i,1); }
+  else if(act==="up" && i>0){ const t=p.stripes[i-1]; p.stripes[i-1]=p.stripes[i]; p.stripes[i]=t; }
+  else if(act==="down" && i<p.stripes.length-1){ const t=p.stripes[i+1]; p.stripes[i+1]=p.stripes[i]; p.stripes[i]=t; }
+  else return;
+  save(); renderStripes(); refresh();
+});
+$("addStripe").addEventListener("click", ()=>{
+  const p=P();
+  if(p.stripes.length>=40){ toast("40 stripes is plenty"); return; }
+  const last=p.stripes.length ? p.stripes[p.stripes.length-1].c : 0;
+  p.stripes.push({ c:(last+1)%p.palette.length, rows:2 });
+  if(!guardTotal(p)){ p.stripes.pop(); return; }
+  save(); renderStripes(); refresh();
+});
+
+/* ================= palette events ================= */
+$("addColor").addEventListener("click", ()=>{
+  if(P().palette.length>=MAX_COLORS){ toast("Palette is full ("+MAX_COLORS+")"); return; }
+  $("colorIn").click();
+});
+$("colorIn").addEventListener("input", ()=>{
+  const p=P();
+  if(p.palette.length>=MAX_COLORS) return;
+  p.palette.push($("colorIn").value);
+  save(); renderPalette(); renderStripes(); refresh();
+  toast("Added "+label(p.palette.length-1));
+});
+$("delColor").addEventListener("click", ()=>{
+  const p=P(), i=p.palette.length-1;
+  if(i===0){ toast("MC stays"); return; }
+  if(p.stripes.some(st=>st.c===i)){
+    if(!confirm(label(i)+" is used in the sequence — its stripes become MC. Remove?")) return;
+    p.stripes.forEach(st=>{ if(st.c===i) st.c=0; });
+  }
+  p.palette.pop();
+  save(); renderPalette(); renderStripes(); refresh();
+});
+
+/* ================= fields ================= */
+$("fReps").addEventListener("input", ()=>{
+  const p=P(), v=clampi(num($("fReps").value)||1, 1, 99);
+  const old=p.repeats; p.repeats=v;
+  if(!guardTotal(p)){ p.repeats=old; $("fReps").value=old; return; }
+  save(); refresh();
+});
+$("fRowG").addEventListener("input", ()=>{
+  const v=num($("fRowG").value);
+  if(v!=null && v>0){ P().rowG=v; save(); refresh(); }
+});
+$("fYd").addEventListener("input", ()=>{
+  P().totalYd=$("fYd").value; save(); renderTable();
+});
+
+/* ================= plan management ================= */
+$("planSel").addEventListener("change", e=>{
+  S.active=e.target.value;
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(err){}
+  renderAll();
+});
+$("planNew").addEventListener("click", ()=>{
+  const name=prompt("Name the plan:");
+  if(!name || !name.trim()) return;
+  const id=mkid();
+  S.plans[id]=mkplan(name.trim());
+  S.active=id;
+  save(); renderAll();
+});
+$("planRen").addEventListener("click", ()=>{
+  const name=prompt("Rename plan:", P().name);
+  if(!name || !name.trim()) return;
+  P().name=name.trim(); save(); renderPlans(); renderSched();
+});
+$("planDel").addEventListener("click", ()=>{
+  if(Object.keys(S.plans).length<2){ toast("Can't delete the only plan"); return; }
+  if(!confirm('Delete "'+P().name+'"? This can\'t be undone.')) return;
+  delete S.plans[S.active];
+  S.active=Object.keys(S.plans)[0];
+  save(); renderAll();
+});
+
+/* ================= init ================= */
+$("ftCarry").textContent=CARRY_MAX;
+renderAll();
+</script>
+</body>
+</html>

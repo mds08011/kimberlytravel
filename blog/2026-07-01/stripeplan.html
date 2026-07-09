@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Planning Stripe Sequences with Yardage and Carry Analysis</title>
+  <link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+  <header>
+    <nav>
+      <ul>
+        <li><a href="../../index.html">Home</a></li>
+        <li><a href="../../travelmap/">Travel Map</a></li>
+        <li><a href="../index.html">Blog</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <h1>Planning Stripe Sequences with Yardage and Carry Analysis</h1>
+      <time datetime="2026-07-01">July 2026</time>
+
+      <p>Stripe Plan turns an ordered stripe sequence — this color for so many rows, repeated so many times — into the four things a striped project actually needs decided up front: a to-scale preview of the fabric, a merged row schedule, per-color yardage apportioned from the pattern's total, and a verdict per color on whether it can be carried up the edge or has to be cut. Single file, offline, multiple named plans in <code>localStorage</code> [1].</p>
+
+      <h2>The problem</h2>
+      <p>Stripes look like the easy colorwork, and then three specific things go wrong. The proportions that looked right as a list of numbers look wrong as fabric — six rows of a dark color reads far heavier than six rows of a light one, and nobody wants to discover that eight inches in. The yarn runs out unevenly — stripes consume each color at different rates, and the pattern's single total-yardage number says nothing about how much of it is the contrast. And the edge becomes a decision fatigue generator: at every color change, carry or cut? Answering all three before casting on is arithmetic, which is what this tool is.</p>
+
+      <h2>How it works</h2>
+      <p>Build one repeat of the sequence as a list of stripes — a palette color and a row count each, reorderable, up to 40 stripes and 12 colors. Set the repeat count, your row gauge, and optionally the pattern's total yardage. Everything below updates live: a facts line (rows per repeat, total rows, finished length at gauge), the fabric preview drawn to scale with dashed lines at repeat boundaries, the per-color table, and the row schedule. Plans are named projects like the row counter's [2]; every change saves instantly.</p>
+
+      <figure>
+        <img loading="lazy" src="/kimberlytravel/blog/img/stripeplan-planner.png" alt="Stripe Plan showing the sequence editor, the to-scale striped fabric preview with repeat boundaries, and the per-color table with yardage and carry verdicts">
+        <figcaption>The sequence editor, the to-scale preview with dashed repeat boundaries, and the per-color table: rows, share, apportioned yardage, and carry-or-cut.</figcaption>
+      </figure>
+
+      <h2>The math</h2>
+      <h3>Merging and the schedule</h3>
+      <p>The sequence is expanded across its repeats and adjacent same-color stripes are merged — including across the repeat boundary, the case hand-written schedules get wrong. A sequence ending in 3 rows of A whose next repeat begins with 4 rows of A is one 7-row stripe, and the schedule says so:</p>
+      <pre><code>Rows 1–4: A
+Rows 5–6: MC
+Rows 7–13: A     ← 3 + 4 merged across the boundary</code></pre>
+      <p>The <strong>Copy schedule</strong> button emits the full merged schedule with a palette key — and each "Rows n–m" boundary is exactly what to pin as a change-row note in Row &amp; Repeat [2].</p>
+      <h3>Yardage apportionment</h3>
+      <p>Per-color yardage is the pattern's total split by each color's share of the rows, using largest-remainder rounding so the per-color figures sum exactly to the total. No invented yards-per-stitch constants — the accuracy is inherited from the pattern's own number, which is stated honestly in the tool's footer.</p>
+      <pre><code>color_yd = round-by-largest-remainder( total_yd × color_rows / total_rows )</code></pre>
+      <h3>Carry or cut</h3>
+      <p>For each color, the tool finds every block of rows where it is in use and measures the gaps between them. If the longest gap is at most 6 rows, the color can be carried up the edge; longer than that and each oversized gap is a cut — the table reports <code>carry up (max gap 6)</code> or <code>cut ×3 (max gap 8)</code>, so the total ends-to-weave count is known before the first cast-on.</p>
+
+      <h2>Editing the config</h2>
+      <p>The constants at the top of the <code>&lt;script&gt;</code> block: <code>CARRY_MAX</code> (6 rows — houses differ; some carry up to 8, some catch mid-way and carry forever), <code>MAX_COLORS</code> (12), <code>MAX_TOTAL_ROWS</code> (2,000, the sanity cap on repeats × rows), and <code>DEFAULT_PALETTE</code>. Plans live under <code>stripeplan.v1</code>.</p>
+
+      <h2>Limitations</h2>
+      <ul>
+        <li>Yardage is proportional to rows, which assumes every row consumes similar yarn — true for a constant-width piece, off for heavily shaped ones. For a shaped garment, apportion the pattern's per-size total and treat the split as an estimate.</li>
+        <li>The carry rule is a straight row-gap threshold. It does not know about jogless-join techniques, steeks, or working flat vs. in the round — the verdict is where to start, not the last word.</li>
+        <li>One sequence per plan. Compound layouts (a hem sequence, then a body sequence) are two plans.</li>
+        <li>Plans are per-device (<code>localStorage</code>); the copied schedule is the portable form.</li>
+      </ul>
+
+      <section>
+        <h2>References</h2>
+        <ol>
+          <li><a href="../../tools/stripeplan.html">Stripe Plan</a></li>
+          <li><a href="../../tools/rowcounter.html">Row &amp; Repeat Counter</a> — pin the schedule's change rows as row notes while knitting.</li>
+        </ol>
+      </section>
+    </article>
+  </main>
+
+  <footer>
+    <hr>
+    <p>This website's source code is open and available on <a href="https://github.com/mds08011/kimberlytravel">Github</a>.</p>
+  </footer>
+</body>
+</html>
