@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -31,7 +31,7 @@
       <p>The operator selects a body of water, enters test-kit readings (free chlorine, pH, total alkalinity, calcium hardness, cyanuric acid, temperature), and the tool renders three things live: a hazard banner if anything is out of code, the LSI gauge, and one dose card per chemistry parameter. Each dose card shows the current reading, an editable target, a chemical picker where more than one product applies, and the computed quantity formatted into field units (fluid ounces, quarts, gallons; ounces and pounds). Readings persist to <code>localStorage</code> under the key <code>pumproom.v1</code>, so a closed tab or a dead tablet loses nothing.</p>
 
       <figure>
-        <img loading="lazy" src="/blog/img/PLACEHOLDER-pumproom-dosing-ui.png" alt="Pump Room main screen showing pool selector, readings grid, LSI gauge, and dose cards">
+        <img loading="lazy" src="/kimberlytravel/blog/img/PLACEHOLDER-pumproom-dosing-ui.png" alt="Pump Room main screen showing pool selector, readings grid, LSI gauge, and dose cards">
         <figcaption>The main screen: body-of-water selector, the test-kit readings grid, the LSI gauge, and one dose card per parameter. Placeholder pending a real screenshot.</figcaption>
       </figure>
 
@@ -98,7 +98,7 @@ min_compliant_GPM  = gallons / (max_hours × 60)
 filter_loading     = GPM / filter_area          (gpm/ft², vs. media cap)</code></pre>
       <p>Each body carries its own Title 22 maximum turnover [3]: 6 hours for the pools, 1 hour for the splash pad, 0.5 hours for the spa. The card always shows the code maximum and the minimum compliant flow for the selected body, so the target is visible before the flowmeter is read; a compliant reading also reports its percentage margin, and a failing one states the GPM shortfall.</p>
       <figure>
-        <img loading="lazy" src="/blog/img/PLACEHOLDER-pumproom-turnover-card.png" alt="Flow and Turnover card showing a compliant turnover time with margin and the minimum compliant GPM">
+        <img loading="lazy" src="/kimberlytravel/blog/img/PLACEHOLDER-pumproom-turnover-card.png" alt="Flow and Turnover card showing a compliant turnover time with margin and the minimum compliant GPM">
         <figcaption>The v1.1.0 Flow &amp; Turnover card: computed turnover against the body's code maximum. Placeholder pending a real screenshot.</figcaption>
       </figure>
       <h3>Configuration</h3>
