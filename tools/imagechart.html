@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<!--
+  IMAGE CHART — Image to Stitch Chart Converter
+  v1.0.0 · 2026-07-09
+  Fiber-arts suite, companion to graphpaper.html / rowcounter.html.
+  Single-file, offline, zero dependencies.
+  Photo or logo in -> gauge-true knitting chart or needlepoint mesh chart out.
+  Pipeline: FileReader -> canvas downsample at (stitches x rows) -> median-cut
+  quantization to a chosen color budget -> gridded chart with bold-every-10
+  rules -> per-color counts, PNG export, and true-physical-size print.
+  The image is processed entirely on this device and never uploaded anywhere.
+  Settings persist in imagechart.v1 (never the image).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1b1512">
+<title>Image Chart — Stitch Chart Converter</title>
+<style>
+  :root{
+    --bg:#1b1512; --panel:#241c17; --panel2:#2d231c; --line:#3e3128;
+    --ink:#f0e7dc; --dim:#b3a494; --faint:#7d7062;
+    --madder:#e08484; --indigo:#8fa8dc; --weld:#d9a441; --leaf:#8fbf96;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --serif:"Iowan Old Style",Palatino,"Palatino Linotype",Georgia,serif;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;
+    line-height:1.5;padding:0 14px calc(28px + env(safe-area-inset-bottom))}
+  .wrap{max-width:680px;margin:0 auto}
+
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+    padding:20px 2px 14px;border-bottom:1px solid var(--line)}
+  h1{font-family:var(--serif);font-size:1.45rem;font-weight:600;font-style:italic}
+  h1 .amp{color:var(--madder)}
+  header .ver{font-family:var(--mono);font-size:.7rem;color:var(--faint)}
+
+  section{margin-top:20px}
+  h2{font-family:var(--serif);font-size:1.08rem;font-weight:600;font-style:italic;
+    display:flex;align-items:center;gap:10px;margin-bottom:4px}
+  h2::after{content:"";flex:1;height:1px;background:var(--line)}
+  .sub{font-size:.8rem;color:var(--dim);margin-bottom:12px}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+
+  /* drop zone */
+  .drop{border:2px dashed var(--line);border-radius:12px;padding:26px 14px;text-align:center;
+    color:var(--dim);cursor:pointer;transition:border-color .15s}
+  .drop.over{border-color:var(--madder);color:var(--madder)}
+  .drop b{color:var(--ink)}
+  .drop .priv{display:block;margin-top:8px;font-size:.74rem;color:var(--faint);
+    font-style:italic;font-family:var(--serif)}
+  .drop:focus-visible{outline:2px solid var(--madder);outline-offset:2px}
+
+  .toolrow{display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{appearance:none;border:none;background:var(--panel2);color:var(--dim);
+    padding:7px 12px;font-size:.8rem;font-weight:700;cursor:pointer}
+  .seg button[aria-pressed="true"]{background:var(--madder);color:#2a1414}
+  .seg button:focus-visible,.btn:focus-visible{outline:2px solid var(--madder);outline-offset:-2px}
+
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+  @media(max-width:430px){.grid{grid-template-columns:1fr 1fr}}
+  .field{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+  .field label{display:block;font-size:.62rem;font-weight:700;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--dim);margin-bottom:3px}
+  .field input{width:100%;background:transparent;border:none;color:var(--ink);
+    font-family:var(--mono);font-size:1.1rem;font-weight:600;padding:0}
+  .field input:focus{outline:none}
+  .field:focus-within{border-color:var(--madder)}
+  input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  input[type=number]{-moz-appearance:textfield}
+  .field input[type=range]{accent-color:var(--madder);padding:6px 0;cursor:pointer}
+
+  .facts{font-family:var(--mono);font-size:.78rem;color:var(--dim);margin-top:10px;line-height:1.6}
+  .facts b{color:var(--ink)}
+
+  .rowbtns{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .btn{appearance:none;border:1px solid var(--line);background:var(--panel2);color:var(--ink);
+    border-radius:8px;padding:10px 15px;font-size:.86rem;font-weight:600;cursor:pointer}
+  .btn:active{background:var(--panel)}
+  .btn.primary{border-color:var(--madder);color:var(--madder)}
+  .btn[disabled]{opacity:.4;cursor:default}
+
+  /* chart preview */
+  .previewcard{background:#fbf7f0;border:1px solid var(--line);border-radius:10px;
+    padding:10px;overflow:auto;margin-top:12px}
+  .previewcard canvas{display:block;width:100%;height:auto;image-rendering:pixelated}
+
+  /* color counts */
+  table{border-collapse:collapse;width:100%;margin-top:12px}
+  th,td{padding:6px 9px;border-bottom:1px solid var(--line);text-align:left;font-size:.84rem}
+  th{font-size:.62rem;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:var(--dim)}
+  td.n{font-family:var(--mono)}
+  .swatch{display:inline-block;width:20px;height:20px;border-radius:4px;
+    border:1px solid var(--line);vertical-align:middle}
+
+  footer{margin-top:28px;border-top:1px solid var(--line);padding-top:12px;
+    font-size:.75rem;color:var(--faint);line-height:1.65}
+  footer code{font-family:var(--mono)}
+
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(8px);
+    background:var(--panel2);border:1px solid var(--madder);color:var(--ink);border-radius:8px;
+    padding:8px 16px;font-size:.85rem;opacity:0;pointer-events:none;
+    transition:opacity .2s,transform .2s;max-width:90vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media (prefers-reduced-motion:reduce){.toast{transition:none}}
+
+  /* ---- PRINT: chart image only, at true physical size ---- */
+  #printbox{display:none}
+  @media print{
+    @page{ margin:0.5in; }
+    body{background:#fff;padding:0}
+    .wrap{display:none !important}
+    .toast{display:none !important}
+    #printbox{display:block !important}
+    #printbox .phead{font-family:var(--sans);font-size:9pt;color:#333;margin-bottom:6pt}
+    #printbox img{display:block}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Image <span class="amp">Chart</span></h1>
+    <span class="ver">chart converter · v1.0.0 · offline</span>
+  </header>
+
+  <section aria-label="Image">
+    <h2>Image</h2>
+    <p class="sub">Drop a photo or logo — it becomes a stitch-by-stitch chart at your gauge.</p>
+    <div class="card">
+      <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose or drop an image">
+        <b>Drop an image here</b> or tap to choose a file
+        <span class="priv">Your image never leaves this device — all processing is local, nothing is uploaded.</span>
+      </div>
+      <input id="fileIn" type="file" accept="image/*" style="display:none">
+
+      <div class="toolrow">
+        <span class="seg" role="group" aria-label="Chart mode">
+          <button type="button" data-mode="knit" aria-pressed="true">Knitter's gauge</button>
+          <button type="button" data-mode="mesh" aria-pressed="false">Needlepoint mesh</button>
+        </span>
+      </div>
+
+      <div class="grid">
+        <div class="field"><label for="cols">Width (stitches)</label>
+          <input id="cols" type="number" inputmode="numeric" min="10" max="200" step="1" value="60"></div>
+        <div class="field"><label for="colors">Colors (2–16)</label>
+          <input id="colors" type="number" inputmode="numeric" min="2" max="16" step="1" value="6"></div>
+        <div class="field" id="fMesh" hidden><label for="mesh">Mesh count (/in)</label>
+          <input id="mesh" type="number" inputmode="decimal" min="5" max="24" step="1" value="14"></div>
+        <div class="field" id="fStG"><label for="stG">Sts / 4 in</label>
+          <input id="stG" type="number" inputmode="decimal" min="4" max="60" step="0.5" value="18"></div>
+        <div class="field" id="fRowG"><label for="rowG">Rows / 4 in</label>
+          <input id="rowG" type="number" inputmode="decimal" min="4" max="80" step="0.5" value="24"></div>
+      </div>
+      <div class="grid" style="grid-template-columns:1fr 1fr">
+        <div class="field"><label for="bright">Brightness <span id="brightV"></span></label>
+          <input id="bright" type="range" min="-50" max="50" step="1" value="0"></div>
+        <div class="field"><label for="contr">Contrast <span id="contrV"></span></label>
+          <input id="contr" type="range" min="-50" max="50" step="1" value="0"></div>
+      </div>
+      <div class="facts" id="facts">No image loaded.</div>
+    </div>
+  </section>
+
+  <section aria-label="Chart">
+    <h2>Chart</h2>
+    <div class="previewcard"><canvas id="chart" width="10" height="10"></canvas></div>
+    <div class="rowbtns">
+      <button class="btn primary" id="pngBtn" type="button" disabled>Download PNG</button>
+      <button class="btn" id="printBtn" type="button" disabled>Print true size</button>
+    </div>
+    <div id="countsBox"></div>
+  </section>
+
+  <footer>
+    The image is drawn onto an offscreen canvas at exactly <i>stitches × rows</i> — the
+    browser's own bilinear filtering is the downsample. In knitter's mode the row count is
+    derived from the width and your stitch:row gauge, so the chart cells carry the
+    <code>rowG:stG</code> aspect and the knitted result isn't vertically squashed. Colors are
+    reduced by median-cut to your budget. Print uses the same true-physical-size approach as
+    Graph Paper — printer at <b>100% / Actual size</b>, never "Fit". Settings persist in
+    <code>imagechart.v1</code>; the image itself is never stored and never uploaded.
+  </footer>
+</div>
+
+<div id="printbox"><div class="phead" id="phead"></div><img id="printimg" alt="Stitch chart at true physical size"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ============ CONFIG ============ */
+const HEAVY = 10;          // bold rule every N cells (graphpaper convention)
+const MAX_ROWS = 400;      // sanity ceiling on derived rows
+const CELL_PX = 18;        // base preview cell width, px (height follows aspect)
+const MAX_CANVAS_W = 2400; // preview/export canvas width cap
+const LS_KEY = "imagechart.v1";
+
+/* ================= state ================= */
+let S = load();
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw){ const p = JSON.parse(raw); if(p && p.mode) return p; }
+  }catch(e){}
+  return { mode:"knit", cols:60, colors:6, stG:18, rowG:24, mesh:14, bright:0, contr:0 };
+}
+function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){} }
+const $   = id => document.getElementById(id);
+const num = v => { const n=parseFloat(v); return Number.isFinite(n) ? n : null; };
+const clampi = (v,lo,hi) => Math.max(lo, Math.min(hi, Math.round(v)));
+let IMG = null;              // the loaded Image
+let RESULT = null;           // { cols, rows, palette, assign, counts }
+
+/* ================= pure math (testable) ================= */
+/* rows so the chart's PHYSICAL aspect matches the image's:
+   knit: rows = imgAspect × cols × rowG/stG ; mesh (square cells): rows = imgAspect × cols */
+function deriveRows(imgW, imgH, cols, mode, stG, rowG){
+  const aspect = imgH/imgW;
+  const rows = mode==="knit" ? aspect*cols*(rowG/stG) : aspect*cols;
+  return clampi(rows, 1, MAX_ROWS);
+}
+/* median-cut quantization: pixels = [[r,g,b],...] -> {palette:[[r,g,b]...], assign:[i->pi]}
+   Deterministic: widest-range box/channel wins (first on tie), stable sort, split at floor(n/2). */
+function medianCut(pixels, k){
+  const n = pixels.length;
+  const first = new Array(n); for(let i=0;i<n;i++) first[i]=i;
+  let boxes = [first];
+  while(boxes.length < k){
+    let bi=-1, bc=0, br=0;
+    for(let b=0;b<boxes.length;b++){
+      if(boxes[b].length<2) continue;
+      for(let c=0;c<3;c++){
+        let lo=255, hi=0;
+        for(const i of boxes[b]){ const v=pixels[i][c]; if(v<lo)lo=v; if(v>hi)hi=v; }
+        if(hi-lo > br){ br=hi-lo; bi=b; bc=c; }
+      }
+    }
+    if(bi<0 || br===0) break;                 // nothing left to split
+    const box = boxes[bi];
+    box.sort((a,b)=> pixels[a][bc]-pixels[b][bc] || a-b);
+    const mid = Math.floor(box.length/2);
+    boxes.splice(bi, 1, box.slice(0,mid), box.slice(mid));
+  }
+  const palette=[], assign=new Array(n);
+  boxes.forEach((box,pi)=>{
+    let r=0,g=0,b=0;
+    for(const i of box){ r+=pixels[i][0]; g+=pixels[i][1]; b+=pixels[i][2]; assign[i]=pi; }
+    const m=box.length||1;
+    palette.push([Math.round(r/m), Math.round(g/m), Math.round(b/m)]);
+  });
+  // merge boxes that quantized to the identical color (budget > distinct colors)
+  const seen=new Map(), remap=new Array(palette.length), outPal=[];
+  palette.forEach((c,i)=>{
+    const key=c.join(",");
+    if(seen.has(key)){ remap[i]=seen.get(key); }
+    else { seen.set(key, outPal.length); remap[i]=outPal.length; outPal.push(c); }
+  });
+  for(let i=0;i<n;i++) assign[i]=remap[assign[i]];
+  return { palette:outPal, assign };
+}
+function countColors(assign, paletteLen){
+  const counts = new Array(paletteLen).fill(0);
+  for(const a of assign) counts[a]++;
+  return counts;
+}
+const hex = rgb => "#"+rgb.map(v=>v.toString(16).padStart(2,"0")).join("");
+
+/* cell pixel aspect (h/w): knit = stG/rowG (physical h/w = (4/rowG)/(4/stG)); mesh = 1 */
+function cellAspect(){
+  return S.mode==="knit" ? (num(S.stG)||18)/(num(S.rowG)||24) : 1;
+}
+/* physical chart size in inches */
+function physSize(cols, rows){
+  if(S.mode==="knit"){
+    const st=num(S.stG)||18, ro=num(S.rowG)||24;
+    return { w: cols*4/st, h: rows*4/ro };
+  }
+  const m=num(S.mesh)||14;
+  return { w: cols/m, h: rows/m };
+}
+
+/* ================= pipeline ================= */
+function rebuild(){
+  if(!IMG){ renderEmpty(); return; }
+  const cols = clampi(num(S.cols)||60, 10, 200);
+  const rows = deriveRows(IMG.naturalWidth, IMG.naturalHeight, cols, S.mode, num(S.stG)||18, num(S.rowG)||24);
+  // downsample: draw at cols x rows — browser bilinear filtering is the resampler
+  const off = document.createElement("canvas");
+  off.width=cols; off.height=rows;
+  const ctx = off.getContext("2d", { willReadFrequently:true });
+  ctx.filter = "brightness("+(100+ +S.bright)+"%) contrast("+(100+ +S.contr)+"%)";
+  ctx.drawImage(IMG, 0, 0, cols, rows);
+  const data = ctx.getImageData(0, 0, cols, rows).data;
+  const pixels = new Array(cols*rows);
+  for(let i=0;i<cols*rows;i++){
+    const o=i*4, a=data[o+3]/255;             // composite transparency onto white
+    pixels[i]=[ Math.round(data[o]*a+255*(1-a)),
+                Math.round(data[o+1]*a+255*(1-a)),
+                Math.round(data[o+2]*a+255*(1-a)) ];
+  }
+  const k = clampi(num(S.colors)||6, 2, 16);
+  const q = medianCut(pixels, k);
+  RESULT = { cols, rows, palette:q.palette, assign:q.assign,
+             counts:countColors(q.assign, q.palette.length) };
+  drawChart();
+  renderFacts();
+  renderCounts();
+  $("pngBtn").disabled=false; $("printBtn").disabled=false;
+}
+function drawChart(target, cellW){
+  const r = RESULT; if(!r) return;
+  const cw = cellW || Math.min(CELL_PX, Math.floor(MAX_CANVAS_W/r.cols));
+  const ch = Math.max(2, Math.round(cw*cellAspect()));
+  const cv = target || $("chart");
+  cv.width = r.cols*cw+1; cv.height = r.rows*ch+1;
+  const ctx = cv.getContext("2d");
+  for(let y=0;y<r.rows;y++)
+    for(let x=0;x<r.cols;x++){
+      ctx.fillStyle = hex(r.palette[r.assign[y*r.cols+x]]);
+      ctx.fillRect(x*cw, y*ch, cw, ch);
+    }
+  // grid: thin every cell, bold every HEAVY (and the outer edge)
+  ctx.strokeStyle="rgba(30,25,20,0.35)"; ctx.lineWidth=1; ctx.beginPath();
+  for(let x=0;x<=r.cols;x++){ ctx.moveTo(x*cw+.5,0); ctx.lineTo(x*cw+.5,r.rows*ch); }
+  for(let y=0;y<=r.rows;y++){ ctx.moveTo(0,y*ch+.5); ctx.lineTo(r.cols*cw,y*ch+.5); }
+  ctx.stroke();
+  ctx.strokeStyle="rgba(20,15,10,0.9)"; ctx.lineWidth=2; ctx.beginPath();
+  for(let x=0;x<=r.cols;x+=HEAVY){ ctx.moveTo(x*cw,0); ctx.lineTo(x*cw,r.rows*ch); }
+  ctx.moveTo(r.cols*cw,0); ctx.lineTo(r.cols*cw,r.rows*ch);
+  for(let y=0;y<=r.rows;y+=HEAVY){ ctx.moveTo(0,y*ch); ctx.lineTo(r.cols*cw,y*ch); }
+  ctx.moveTo(0,r.rows*ch); ctx.lineTo(r.cols*cw,r.rows*ch);
+  ctx.stroke();
+  return cv;
+}
+function renderEmpty(){
+  const cv=$("chart"); cv.width=10; cv.height=10;
+  $("facts").textContent="No image loaded.";
+  $("countsBox").innerHTML="";
+  $("pngBtn").disabled=true; $("printBtn").disabled=true;
+  RESULT=null;
+}
+function renderFacts(){
+  const r=RESULT, p=physSize(r.cols,r.rows);
+  const r2=x=>Math.round(x*100)/100;
+  $("facts").innerHTML = "chart <b>"+r.cols+" sts × "+r.rows+" rows</b> · "+
+    r.palette.length+" colors · finished ≈ <b>"+r2(p.w)+" × "+r2(p.h)+" in</b> at "+
+    (S.mode==="knit" ? (num(S.stG)||18)+" sts / "+(num(S.rowG)||24)+" rows per 4 in"
+                     : (num(S.mesh)||14)+"-count mesh");
+}
+function renderCounts(){
+  const r=RESULT, total=r.cols*r.rows;
+  const rows = r.palette.map((c,i)=>({c, i, n:r.counts[i]}))
+    .sort((a,b)=>b.n-a.n)
+    .map(x=>'<tr><td><span class="swatch" style="background:'+hex(x.c)+'"></span></td>'+
+      '<td class="n">'+hex(x.c)+'</td><td class="n">'+x.n+'</td>'+
+      '<td class="n">'+(Math.round(x.n/total*1000)/10)+'%</td></tr>').join("");
+  $("countsBox").innerHTML = '<table><thead><tr><th></th><th>Color</th><th>Cells</th><th>Share</th></tr></thead>'+
+    '<tbody>'+rows+'</tbody><tfoot><tr><td></td><td class="n">'+r.palette.length+' colors</td>'+
+    '<td class="n">'+total+'</td><td></td></tr></tfoot></table>';
+}
+
+/* ================= I/O ================= */
+function toast(m){ const t=$("toast"); t.textContent=m; t.classList.add("show");
+  clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove("show"),2000); }
+function loadFile(f){
+  if(!f || !/^image\//.test(f.type)){ toast("That's not an image file"); return; }
+  const rd=new FileReader();
+  rd.onload=()=>{
+    const img=new Image();
+    img.onload=()=>{ IMG=img; rebuild(); toast("Loaded — "+img.naturalWidth+"×"+img.naturalHeight+" px"); };
+    img.onerror=()=>toast("Couldn't decode that image");
+    img.src=rd.result;                 // data URL — stays in memory, never stored
+  };
+  rd.readAsDataURL(f);
+}
+$("drop").addEventListener("click", ()=>$("fileIn").click());
+$("drop").addEventListener("keydown", e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); $("fileIn").click(); } });
+$("fileIn").addEventListener("change", ()=>{ loadFile($("fileIn").files[0]); $("fileIn").value=""; });
+["dragover","dragenter"].forEach(ev=>$("drop").addEventListener(ev, e=>{ e.preventDefault(); $("drop").classList.add("over"); }));
+["dragleave","drop"].forEach(ev=>$("drop").addEventListener(ev, e=>{ e.preventDefault(); $("drop").classList.remove("over"); }));
+$("drop").addEventListener("drop", e=>loadFile(e.dataTransfer.files[0]));
+
+$("pngBtn").addEventListener("click", ()=>{
+  if(!RESULT) return;
+  const cv=drawChart(document.createElement("canvas"), Math.min(30, Math.floor(MAX_CANVAS_W/RESULT.cols)));
+  cv.toBlob(blob=>{
+    const url=URL.createObjectURL(blob), a=document.createElement("a");
+    a.href=url; a.download="stitch-chart-"+RESULT.cols+"x"+RESULT.rows+".png";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 4000);
+    toast("PNG saved");
+  }, "image/png");
+});
+$("printBtn").addEventListener("click", ()=>{
+  if(!RESULT) return;
+  const cv=drawChart(document.createElement("canvas"), Math.min(40, Math.floor(4000/RESULT.cols)));
+  const p=physSize(RESULT.cols, RESULT.rows), r2=x=>Math.round(x*100)/100;
+  $("printimg").src=cv.toDataURL("image/png");
+  $("printimg").style.width=r2(p.w)+"in";
+  $("phead").textContent="Stitch chart — "+RESULT.cols+" × "+RESULT.rows+" — "+
+    (S.mode==="knit" ? (num(S.stG)||18)+" sts / "+(num(S.rowG)||24)+" rows per 4 in"
+                     : (num(S.mesh)||14)+"-count mesh")+
+    " — "+r2(p.w)+" × "+r2(p.h)+" in — print at 100% / Actual size";
+  setTimeout(()=>window.print(), 50);
+});
+
+/* ================= settings events ================= */
+function applyMode(){
+  document.querySelectorAll("[data-mode]").forEach(b=>b.setAttribute("aria-pressed", b.dataset.mode===S.mode));
+  $("fMesh").hidden = S.mode!=="mesh";
+  $("fStG").hidden = $("fRowG").hidden = S.mode!=="knit";
+}
+document.querySelectorAll("[data-mode]").forEach(b=>b.addEventListener("click", ()=>{
+  S.mode=b.dataset.mode; save(); applyMode(); rebuild();
+}));
+[["cols","cols"],["colors","colors"],["stG","stG"],["rowG","rowG"],["mesh","mesh"]].forEach(([id,key])=>{
+  $(id).value=S[key];
+  $(id).addEventListener("input", ()=>{ S[key]=$(id).value; save(); rebuild(); });
+});
+[["bright","brightV"],["contr","contrV"]].forEach(([id,lab])=>{
+  $(id).value=S[id];
+  $(lab).textContent=S[id]>0?"+"+S[id]:S[id];
+  $(id).addEventListener("input", ()=>{
+    S[id]=+$(id).value; $(lab).textContent=S[id]>0?"+"+S[id]:S[id];
+    save(); rebuild();
+  });
+});
+
+/* ================= init ================= */
+applyMode(); renderEmpty();
+</script>
+</body>
+</html>

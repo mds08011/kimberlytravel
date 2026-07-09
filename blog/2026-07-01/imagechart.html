@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Converting Images into Gauge-True Stitch Charts</title>
+  <link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+  <header>
+    <nav>
+      <ul>
+        <li><a href="../../index.html">Home</a></li>
+        <li><a href="../../travelmap/">Travel Map</a></li>
+        <li><a href="../index.html">Blog</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <h1>Converting Images into Gauge-True Stitch Charts</h1>
+      <time datetime="2026-07-01">July 2026</time>
+
+      <p>Image Chart turns a photo or logo into a stitch-by-stitch chart: gauge-true cells for knitting or square cells for needlepoint mesh, a reduced color palette with per-color cell counts, PNG export, and true-physical-size printing. Everything runs in the browser on this device — the image is never uploaded anywhere, and the tool says so in the UI [1].</p>
+
+      <h2>The problem</h2>
+      <p>Turning a picture into a chart by hand means squinting at a printout through graph paper and making three hundred small judgment calls, and the result is still wrong in a specific way: charted on square paper, the motif knits up vertically squashed, because knitting stitches are wider than they are tall. Online converters fix the pixelation but not the aspect problem, and they require uploading the image — which matters when the image is a client's logo. This tool does the resampling, the color reduction, and the gauge-aspect correction locally.</p>
+
+      <h2>How it works</h2>
+      <p>Drop an image (or tap to pick a file). Choose the chart width in stitches (10–200), a color budget (2–16), and the mode — knitter's gauge (with stitch and row gauge per 4 in) or needlepoint mesh count. The chart renders immediately, with thin gridlines every cell and bold rules every 10 for counting, the same convention as Graph Paper [2]. Below it, a table lists each palette color with its cell count and share — the thread and yarn estimating numbers. Small brightness/contrast sliders pre-adjust the image before quantization; that is the entire extent of image editing by design. Settings persist between sessions; the image never does.</p>
+
+      <figure>
+        <img loading="lazy" src="/kimberlytravel/blog/img/PLACEHOLDER-imagechart-chart.png" alt="Image Chart showing a photo reduced to a six-color gridded stitch chart with the per-color counts table">
+        <figcaption>A photo reduced to a six-color chart with bold-every-10 rules and the per-color counts table. Placeholder pending a real screenshot.</figcaption>
+      </figure>
+
+      <h2>The math</h2>
+      <h3>Downsampling and the gauge-true row count</h3>
+      <p>The image is drawn onto an offscreen canvas at exactly <em>stitches × rows</em> — the browser's own bilinear filtering is the downsample; no hand-rolled resampler. The row count is where the gauge correction lives:</p>
+      <pre><code>knit:  rows = image_aspect × stitches × (row_gauge / stitch_gauge)
+mesh:  rows = image_aspect × stitches</code></pre>
+      <p>At 18 sts × 24 rows / 4 in, a square image charted 60 stitches wide gets 80 rows, and the chart cells draw wider than tall (aspect <code>stitch_gauge : row_gauge</code>) — so the chart on paper, the cast-on math, and the knitted fabric all agree. Transparent pixels are composited onto white before sampling.</p>
+      <h3>Color reduction</h3>
+      <p>Colors are reduced by median-cut quantization: start with all pixels in one box, repeatedly split the box with the widest channel range at its median, until the color budget is reached; each box's mean color becomes a palette entry. Median cut is deterministic — same image and settings give the same chart every time, which matters when reprinting page two of a chart printed last month. When the budget exceeds the image's actual distinct colors, boxes that converge on the identical color are merged rather than shown as duplicate palette rows. Optional DMC floss matching was considered and deliberately left out of v1.</p>
+      <h3>Output</h3>
+      <p>PNG export renders the chart at high resolution via <code>canvas.toBlob()</code>. Printing uses the same true-physical-size approach as Graph Paper: a print-only image of the chart is sized in real inches (chart width × cell width at your gauge), and a print stylesheet strips everything else — <strong>printer at 100% / Actual size, never "Fit"</strong> [2].</p>
+
+      <h2>Editing the config</h2>
+      <p>The constants at the top of the <code>&lt;script&gt;</code> block: <code>HEAVY</code> (bold rule interval, 10), <code>MAX_ROWS</code> (row-count ceiling, 400), and the preview/export resolution caps. The quantizer is <code>medianCut()</code>; the row derivation is <code>deriveRows()</code>. Settings persist under <code>imagechart.v1</code> — mode, width, budget, gauges, and the brightness/contrast positions, never image data.</p>
+
+      <h2>Limitations</h2>
+      <ul>
+        <li>Median cut optimizes coverage of the image's color space, not "the six colors a knitter would pick." Logos and high-contrast images chart cleanly; subtle gradients spend the budget on near-duplicates. The brightness/contrast pre-adjust is the lever.</li>
+        <li>There is no editing after quantization — no per-cell repaint, no palette swaps. The colorwork chart <em>editor</em> is a separate future tool; this is a converter.</li>
+        <li>Print scale is hostage to the print dialog: anything other than 100% / Actual Size silently breaks the physical calibration. Verify against a ruler once, as with Graph Paper.</li>
+        <li>Charts wider than ~200 stitches are out of scope — that ceiling keeps the chart legible on a Letter/A4 sheet at real gauge.</li>
+      </ul>
+
+      <section>
+        <h2>References</h2>
+        <ol>
+          <li><a href="../../tools/imagechart.html">Image Chart Converter</a></li>
+          <li><a href="../../tools/graphpaper.html">Gauge-True Graph Paper</a> — the source of the cell-aspect math, the bold-rule convention, and the true-size print technique.</li>
+        </ol>
+      </section>
+    </article>
+  </main>
+
+  <footer>
+    <hr>
+    <p>This website's source code is open and available on <a href="https://github.com/mds08011/kimberlytravel">Github</a>.</p>
+  </footer>
+</body>
+</html>
