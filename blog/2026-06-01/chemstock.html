@@ -31,8 +31,8 @@
       <p>Each product shows as a card with a miniature tank fill and a status line: green (days left), amber (<em>order by</em> a named date), or red (<strong>ORDER NOW</strong>, with a hazard banner naming the product and its projected empty date). Selecting a product shows the detail view — a tank gauge drawn as SVG with a dashed red <em>reorder</em> line, the burn rate, the projected empty date, and the reorder-by date. Below that is the logging form (level plus an editable timestamp for backfilling) and the reading history.</p>
 
       <figure>
-        <img loading="lazy" src="/kimberlytravel/blog/img/PLACEHOLDER-chemstock-tank-gauge.png" alt="Chem Stock detail view showing the tank gauge with dashed reorder line, burn rate, and projected dates">
-        <figcaption>The detail view: tank gauge with the dashed reorder threshold, burn rate, and projected empty / reorder-by dates. Placeholder pending a real screenshot.</figcaption>
+        <img loading="lazy" src="/kimberlytravel/blog/img/chemstock-tank-gauge.png" alt="Chem Stock detail view showing the tank gauge with dashed reorder line, burn rate, and projected dates">
+        <figcaption>The detail view: tank gauge with the dashed reorder threshold, burn rate, and projected empty / reorder-by dates.</figcaption>
       </figure>
 
       <p>The reorder line on the gauge is drawn at the level where remaining supply equals lead time plus buffer — when the fill drops to the dashed line, it is time to order. <strong>Copy status</strong> formats a one-line-per-product summary for pasting into DigiQuatics; <strong>Export CSV</strong> writes the full reading history (with delivery flags) as a UTF-8 file for budget season.</p>

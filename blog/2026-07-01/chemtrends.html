@@ -31,8 +31,8 @@
       <p>Pick a body of water (the same four as the rest of the suite) and a time range (14 days, 45 days, all). Four stacked charts render FC, pH, temperature, and flow. FC and pH carry shaded compliance bands — the body's code minimum to 10 ppm for FC, 7.2–8.0 for pH — and any reading outside its band draws as an enlarged red dot. The <strong>By weekday</strong> toggle folds every reading in range onto Monday–Sunday buckets, drawing each weekday's min–max whisker and mean, which is the direct answer to "do we always sag on Saturdays?"</p>
 
       <figure>
-        <img loading="lazy" src="/kimberlytravel/blog/img/PLACEHOLDER-chemtrends-charts.png" alt="Chem Trends showing stacked FC and pH charts with shaded compliance bands and red out-of-band markers">
-        <figcaption>Stacked metric charts with compliance bands and out-of-band markers. Placeholder pending a real screenshot.</figcaption>
+        <img loading="lazy" src="/kimberlytravel/blog/img/chemtrends-charts.png" alt="Chem Trends showing stacked FC and pH charts with shaded compliance bands and red out-of-band markers">
+        <figcaption>Stacked metric charts with compliance bands and out-of-band markers.</figcaption>
       </figure>
 
       <p>Data comes from two sources, merged and deduplicated at minute granularity. The live source is Reading Queue's log on the same device, read directly from <code>localStorage</code> — strictly read-only. The second source is CSV import: the parser accepts the queue's own export header, skips malformed rows rather than failing, and persists imported rows under Chem Trends' own key, so charted history survives the queue's "clear entered" housekeeping. A reading's plotted time is its capture date combined with the operator-editable time field, mirroring how the queue itself displays backfilled readings.</p>
