@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<!--
+  COLORWORK — Stranded Colorwork Chart Editor
+  v1.0.0 · 2026-07-09
+  Fiber-arts suite, companion to imagechart.html / graphpaper.html / rowcounter.html.
+  Single-file, offline, zero dependencies.
+  Paint a colorwork motif cell by cell on a gauge-true grid (cells proportioned
+  rowG:stG so the knitted motif isn't squashed), see it tiled as a repeat,
+  read it back as per-row written instructions (in the round: right to left,
+  bottom up), and get warned about floats longer than the catch limit.
+  Multiple named charts persist in localStorage (colorwork.v1). PNG export and
+  true-physical-size printing use the graphpaper.html technique.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1b1512">
+<title>Colorwork — Chart Editor</title>
+<style>
+  :root{
+    --bg:#1b1512; --panel:#241c17; --panel2:#2d231c; --line:#3e3128;
+    --ink:#f0e7dc; --dim:#b3a494; --faint:#7d7062;
+    --madder:#e08484; --indigo:#8fa8dc; --weld:#d9a441; --leaf:#8fbf96;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --serif:"Iowan Old Style",Palatino,"Palatino Linotype",Georgia,serif;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;
+    line-height:1.5;padding:0 14px calc(28px + env(safe-area-inset-bottom))}
+  .wrap{max-width:680px;margin:0 auto}
+
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+    padding:20px 2px 14px;border-bottom:1px solid var(--line)}
+  h1{font-family:var(--serif);font-size:1.45rem;font-weight:600;font-style:italic}
+  h1 .amp{color:var(--madder)}
+  header .ver{font-family:var(--mono);font-size:.7rem;color:var(--faint)}
+
+  section{margin-top:20px}
+  h2{font-family:var(--serif);font-size:1.08rem;font-weight:600;font-style:italic;
+    display:flex;align-items:center;gap:10px;margin-bottom:4px}
+  h2::after{content:"";flex:1;height:1px;background:var(--line)}
+  .sub{font-size:.8rem;color:var(--dim);margin-bottom:12px}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+
+  .toolrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  select.big{flex:1;min-width:140px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:8px;color:var(--ink);font-size:.92rem;padding:10px;appearance:none}
+  .btn{appearance:none;border:1px solid var(--line);background:var(--panel2);color:var(--ink);
+    border-radius:8px;padding:9px 13px;font-size:.83rem;font-weight:600;cursor:pointer}
+  .btn:active{background:var(--panel)}
+  .btn.primary{border-color:var(--madder);color:var(--madder)}
+  .btn.small{padding:6px 10px;font-size:.76rem}
+  .btn[disabled]{opacity:.4;cursor:default}
+  .btn:focus-visible,select:focus-visible,.seg button:focus-visible,.sw:focus-visible{
+    outline:2px solid var(--madder);outline-offset:2px}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{appearance:none;border:none;background:var(--panel2);color:var(--dim);
+    padding:7px 12px;font-size:.8rem;font-weight:700;cursor:pointer}
+  .seg button[aria-pressed="true"]{background:var(--madder);color:#2a1414}
+
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+  @media(max-width:430px){.grid{grid-template-columns:1fr 1fr}}
+  .field{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+  .field label{display:block;font-size:.62rem;font-weight:700;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--dim);margin-bottom:3px}
+  .field input{width:100%;background:transparent;border:none;color:var(--ink);
+    font-family:var(--mono);font-size:1.1rem;font-weight:600;padding:0}
+  .field input:focus{outline:none}
+  .field:focus-within{border-color:var(--madder)}
+  input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  input[type=number]{-moz-appearance:textfield}
+
+  /* palette */
+  .palette{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}
+  .sw{appearance:none;width:40px;height:40px;border-radius:9px;cursor:pointer;
+    border:2px solid var(--line);position:relative;padding:0}
+  .sw[aria-pressed="true"]{border-color:var(--madder);box-shadow:0 0 0 2px var(--madder)}
+  .sw .tag{position:absolute;left:50%;bottom:-16px;transform:translateX(-50%);
+    font-family:var(--mono);font-size:.62rem;color:var(--faint);white-space:nowrap}
+  .palette{padding-bottom:16px}
+
+  /* editor canvas */
+  .sheet{background:#fbf7f0;border:1px solid var(--line);border-radius:10px;
+    padding:8px;margin-top:14px;overflow:auto}
+  .sheet canvas{display:block;width:100%;height:auto;touch-action:none;cursor:crosshair}
+
+  .facts{font-family:var(--mono);font-size:.78rem;color:var(--dim);margin-top:10px;line-height:1.6}
+  .facts b{color:var(--ink)}
+  .floatwarn{margin-top:8px;border:1px solid var(--weld);border-radius:10px;
+    padding:9px 12px;font-size:.82rem;color:var(--weld);display:none}
+  .floatwarn.show{display:block}
+
+  /* repeat preview */
+  .tilecard{background:#fbf7f0;border:1px solid var(--line);border-radius:10px;padding:8px}
+  .tilecard canvas{display:block;width:100%;height:auto}
+
+  /* instructions */
+  pre.instr{background:var(--panel2);border:1px solid var(--line);border-radius:10px;
+    padding:12px;font-family:var(--mono);font-size:.78rem;line-height:1.7;color:var(--dim);
+    overflow-x:auto;white-space:pre;max-height:300px;overflow-y:auto}
+  pre.instr b{color:var(--ink)}
+
+  .rowbtns{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .note{margin-top:8px;font-size:.76rem;color:var(--faint);font-style:italic;font-family:var(--serif)}
+
+  footer{margin-top:28px;border-top:1px solid var(--line);padding-top:12px;
+    font-size:.75rem;color:var(--faint);line-height:1.65}
+  footer code{font-family:var(--mono)}
+
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(8px);
+    background:var(--panel2);border:1px solid var(--madder);color:var(--ink);border-radius:8px;
+    padding:8px 16px;font-size:.85rem;opacity:0;pointer-events:none;
+    transition:opacity .2s,transform .2s;max-width:90vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media (prefers-reduced-motion:reduce){.toast{transition:none}}
+
+  /* print: chart image only, true physical size */
+  #printbox{display:none}
+  @media print{
+    @page{ margin:0.5in; }
+    body{background:#fff;padding:0}
+    .wrap{display:none !important}
+    .toast{display:none !important}
+    #printbox{display:block !important}
+    #printbox .phead{font-family:var(--sans);font-size:9pt;color:#333;margin-bottom:6pt}
+    #printbox img{display:block}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Color<span class="amp">work</span></h1>
+    <span class="ver">chart editor · v1.0.0 · offline</span>
+  </header>
+
+  <section aria-label="Chart">
+    <div class="toolrow">
+      <select class="big" id="chartSel" aria-label="Chart"></select>
+      <button class="btn" id="chartNew" type="button">New</button>
+      <button class="btn" id="chartRen" type="button">Rename</button>
+      <button class="btn" id="chartDel" type="button">Delete</button>
+    </div>
+  </section>
+
+  <section aria-label="Setup">
+    <h2>Grid</h2>
+    <p class="sub">Cells carry your stitch:row aspect, so the motif you chart is the motif you knit.</p>
+    <div class="card">
+      <div class="toolrow">
+        <span class="seg" role="group" aria-label="Cell mode">
+          <button type="button" data-mode="knit" aria-pressed="true">Knitter's gauge</button>
+          <button type="button" data-mode="mesh" aria-pressed="false">Square / mesh</button>
+        </span>
+      </div>
+      <div class="grid">
+        <div class="field"><label for="fCols">Stitches wide</label>
+          <input id="fCols" type="number" inputmode="numeric" min="4" max="120" step="1"></div>
+        <div class="field"><label for="fRows">Rows tall</label>
+          <input id="fRows" type="number" inputmode="numeric" min="4" max="160" step="1"></div>
+        <div class="field" style="display:flex;align-items:end">
+          <button class="btn primary" id="sizeApply" type="button" style="width:100%">Apply size</button></div>
+        <div class="field" id="fStG"><label for="stG">Sts / 4 in</label>
+          <input id="stG" type="number" inputmode="decimal" min="4" max="60" step="0.5"></div>
+        <div class="field" id="fRowG"><label for="rowG">Rows / 4 in</label>
+          <input id="rowG" type="number" inputmode="decimal" min="4" max="80" step="0.5"></div>
+        <div class="field" id="fMesh" hidden><label for="mesh">Mesh count (/in)</label>
+          <input id="mesh" type="number" inputmode="decimal" min="5" max="24" step="1"></div>
+      </div>
+      <div class="note">Resizing keeps <b>row 1 / stitch 1</b> (bottom-right) anchored — charts grow upward and to the left. Undo reverses a resize.</div>
+    </div>
+  </section>
+
+  <section aria-label="Editor">
+    <h2>Chart</h2>
+    <div class="card">
+      <div class="toolrow">
+        <span class="seg" role="group" aria-label="Tool">
+          <button type="button" data-tool="paint" aria-pressed="true">Paint</button>
+          <button type="button" data-tool="fill" aria-pressed="false">Fill</button>
+          <button type="button" data-tool="erase" aria-pressed="false">Erase</button>
+        </span>
+        <button class="btn" id="undoBtn" type="button" disabled>↶ Undo</button>
+        <button class="btn" id="clearBtn" type="button">Clear</button>
+      </div>
+      <div class="palette" id="palette"></div>
+      <div class="toolrow" style="margin-top:2px">
+        <button class="btn small" id="addColor" type="button">＋ Add color</button>
+        <button class="btn small" id="delColor" type="button">− Remove selected</button>
+        <input id="colorIn" type="color" value="#8fa8dc" style="position:absolute;opacity:0;pointer-events:none">
+      </div>
+      <div class="sheet"><canvas id="chart" width="10" height="10"></canvas></div>
+      <div class="facts" id="facts"></div>
+      <div class="floatwarn" id="floatwarn"></div>
+      <div class="rowbtns">
+        <button class="btn primary" id="pngBtn" type="button">Download PNG</button>
+        <button class="btn" id="printBtn" type="button">Print true size</button>
+      </div>
+    </div>
+  </section>
+
+  <section aria-label="Repeat preview">
+    <h2>Repeat preview</h2>
+    <p class="sub">The motif tiled 3 × 2 — how the repeat reads across a round.</p>
+    <div class="tilecard"><canvas id="tile" width="10" height="10"></canvas></div>
+  </section>
+
+  <section aria-label="Row instructions">
+    <h2>Written instructions</h2>
+    <p class="sub">In the round: read right to left, row 1 (bottom) first. MC is the background color.</p>
+    <pre class="instr" id="instr"></pre>
+    <div class="rowbtns">
+      <button class="btn primary" id="copyInstr" type="button">Copy instructions</button>
+    </div>
+  </section>
+
+  <footer>
+    Chart convention: <b>row 1 is the bottom row, stitch 1 is the rightmost column</b> —
+    numbering and the bold every-10 rules count from that corner, matching how the chart is
+    knit in the round. The float check flags any run longer than <b id="ftFloat"></b> stitches
+    in a multi-color row — catch the float or the fabric puckers. Cell aspect is
+    <code>stitch gauge : row gauge</code>, as Graph Paper. Every stroke saves instantly;
+    charts live in this browser only (<code>localStorage</code>). PNG and true-size print
+    are the export paths — print at <b>100% / Actual size</b>.
+  </footer>
+</div>
+
+<div id="printbox"><div class="phead" id="phead"></div><img id="printimg" alt="Colorwork chart at true physical size"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ============ CONFIG ============ */
+const HEAVY = 10;          // bold rule every N cells, counted from stitch 1 / row 1
+const FLOAT_MAX = 5;       // warn on same-color runs longer than this in multi-color rows
+const MAX_COLORS = 12;     // palette cap (grid stores one hex digit per cell)
+const MAX_CELLS = 19200;   // 120 x 160 ceiling
+const UNDO_DEPTH = 50;
+const DEFAULT_PALETTE = ["#f2ead8", "#8a4a45", "#33415e", "#c9a04a"];  // MC + A B C
+const LS_KEY = "colorwork.v1";
+
+/* ================= state ================= */
+let S = load();
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw){ const p = JSON.parse(raw); if(p && p.charts) return p; }
+  }catch(e){}
+  const id = mkid();
+  return { active:id, charts:{ [id]: mkchart("My motif") } };
+}
+function mkid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+function mkchart(name){
+  return { name, cols:24, rows:24, mode:"knit", stG:18, rowG:24, mesh:14,
+           palette:DEFAULT_PALETTE.slice(), grid:"0".repeat(24*24), updated:Date.now() };
+}
+function save(){
+  C.grid = encode(G); C.updated = Date.now();
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){}
+}
+const $   = id => document.getElementById(id);
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const num = v => { const n=parseFloat(v); return Number.isFinite(n) ? n : null; };
+const clampi = (v,lo,hi) => Math.max(lo, Math.min(hi, Math.round(v)));
+
+/* grid <-> compact string: one hex digit per cell (hence MAX_COLORS 12 ≤ 16) */
+function encode(arr){ let s=""; for(const v of arr) s += v.toString(16); return s; }
+function decode(str, n){
+  const out = new Array(n).fill(0);
+  for(let i=0;i<Math.min(str.length,n);i++){
+    const v = parseInt(str[i],16);
+    out[i] = Number.isFinite(v) ? v : 0;
+  }
+  return out;
+}
+
+let C = S.charts[S.active];              // active chart meta
+let G = decode(C.grid, C.cols*C.rows);   // working grid (row 0 = TOP row on screen)
+let TOOL = "paint", ACTIVE = 1;          // selected palette index (1 = first contrast)
+let UNDO = [];                            // [{grid, cols, rows}]
+
+/* ================= chart conventions (pure, testable) ================= */
+const label = idx => idx===0 ? "MC" : String.fromCharCode(64+idx);   // 1->A, 2->B ...
+/* run-length encode one row array -> [[idx,count],...] */
+function rleRow(row){
+  const out=[];
+  for(const v of row){
+    if(out.length && out[out.length-1][0]===v) out[out.length-1][1]++;
+    else out.push([v,1]);
+  }
+  return out;
+}
+/* per-row written instructions: row 1 = bottom, stitches read right to left */
+function instructionsText(cols, rows, grid){
+  const lines=[];
+  for(let r=rows-1; r>=0; r--){                       // bottom row first
+    const row=[];
+    for(let x=cols-1; x>=0; x--) row.push(grid[r*cols+x]);   // right to left
+    const segs = rleRow(row).map(([v,n])=>n+" "+label(v));
+    lines.push("Row "+(rows-r)+": "+segs.join(", "));
+  }
+  return lines.join("\n");
+}
+/* longest same-color run per row; flag rows with >1 color and a run > max.
+   Returned row numbers use chart numbering (1 = bottom). */
+function floatIssues(cols, rows, grid, max){
+  const issues=[];
+  for(let r=0;r<rows;r++){
+    const row = grid.slice(r*cols, (r+1)*cols);
+    if(new Set(row).size < 2) continue;               // solid row: nothing stranded
+    let worst=0, worstIdx=0;
+    for(const [v,n] of rleRow(row)) if(n>worst){ worst=n; worstIdx=v; }
+    if(worst > max) issues.push({ row: rows-r, color: label(worstIdx), run: worst });
+  }
+  return issues;
+}
+/* bottom-right-anchored resize: row 1 / stitch 1 stay fixed */
+function resizeGrid(grid, oldCols, oldRows, newCols, newRows){
+  const out = new Array(newCols*newRows).fill(0);
+  const nR = Math.min(oldRows,newRows), nC = Math.min(oldCols,newCols);
+  for(let k=0;k<nR;k++){
+    const or_ = oldRows-1-k, nr = newRows-1-k;
+    for(let j=0;j<nC;j++){
+      const oc = oldCols-1-j, nc = newCols-1-j;
+      out[nr*newCols+nc] = grid[or_*oldCols+oc];
+    }
+  }
+  return out;
+}
+/* remove palette index i (never 0): cells -> MC, higher indices shift down */
+function removeColorFrom(grid, i){
+  return grid.map(v => v===i ? 0 : (v>i ? v-1 : v));
+}
+/* flood fill from (col,row); returns count changed */
+function floodFill(grid, cols, rows, col, row, to){
+  const from = grid[row*cols+col];
+  if(from===to) return 0;
+  const stack=[[col,row]]; let n=0;
+  while(stack.length){
+    const [x,y]=stack.pop();
+    if(x<0||y<0||x>=cols||y>=rows) continue;
+    const i=y*cols+x;
+    if(grid[i]!==from) continue;
+    grid[i]=to; n++;
+    stack.push([x+1,y],[x-1,y],[x,y+1],[x,y-1]);
+  }
+  return n;
+}
+
+/* ================= geometry ================= */
+function cellAspect(){ return C.mode==="knit" ? (num(C.stG)||18)/(num(C.rowG)||24) : 1; }
+function physSize(){
+  if(C.mode==="knit"){
+    const st=num(C.stG)||18, ro=num(C.rowG)||24;
+    return { w:C.cols*4/st, h:C.rows*4/ro };
+  }
+  const m=num(C.mesh)||14;
+  return { w:C.cols/m, h:C.rows/m };
+}
+
+/* ================= drawing ================= */
+const GUT_R = 30, GUT_B = 20;   // label gutters (right = row numbers, bottom = stitch numbers)
+function drawChart(target, cellW){
+  const cw = cellW || clampi(640/C.cols, 5, 26);
+  const ch = Math.max(3, Math.round(cw*cellAspect()));
+  const cv = target || $("chart");
+  cv.width = C.cols*cw + GUT_R; cv.height = C.rows*ch + GUT_B;
+  const ctx = cv.getContext("2d");
+  ctx.fillStyle="#fbf7f0"; ctx.fillRect(0,0,cv.width,cv.height);
+  for(let y=0;y<C.rows;y++)
+    for(let x=0;x<C.cols;x++){
+      ctx.fillStyle = C.palette[G[y*C.cols+x]] || C.palette[0];
+      ctx.fillRect(x*cw, y*ch, cw, ch);
+    }
+  // thin grid
+  ctx.strokeStyle="rgba(30,25,20,0.30)"; ctx.lineWidth=1; ctx.beginPath();
+  for(let x=0;x<=C.cols;x++){ ctx.moveTo(x*cw+.5,0); ctx.lineTo(x*cw+.5,C.rows*ch); }
+  for(let y=0;y<=C.rows;y++){ ctx.moveTo(0,y*ch+.5); ctx.lineTo(C.cols*cw,y*ch+.5); }
+  ctx.stroke();
+  // bold rules every HEAVY, counted from the bottom-right (stitch 1 / row 1)
+  ctx.strokeStyle="rgba(20,15,10,0.85)"; ctx.lineWidth=2; ctx.beginPath();
+  for(let x=0;x<=C.cols;x++) if((C.cols-x)%HEAVY===0 || x===0){ ctx.moveTo(x*cw,0); ctx.lineTo(x*cw,C.rows*ch); }
+  for(let y=0;y<=C.rows;y++) if((C.rows-y)%HEAVY===0 || y===0){ ctx.moveTo(0,y*ch); ctx.lineTo(C.cols*cw,y*ch); }
+  ctx.stroke();
+  // numbering: stitch n from the right (bottom gutter), row n from the bottom (right gutter)
+  ctx.fillStyle="#7d7062"; ctx.font="10px ui-monospace,Menlo,Consolas,monospace";
+  ctx.textAlign="center";
+  for(let n=HEAVY; n<=C.cols; n+=HEAVY)
+    ctx.fillText(String(n), (C.cols-n)*cw + cw/2, C.rows*ch + 13);
+  ctx.fillText("1", (C.cols-1)*cw + cw/2, C.rows*ch + 13);
+  ctx.textAlign="left";
+  for(let n=HEAVY; n<=C.rows; n+=HEAVY)
+    ctx.fillText(String(n), C.cols*cw + 5, (C.rows-n)*ch + ch/2 + 3.5);
+  ctx.fillText("1", C.cols*cw + 5, (C.rows-1)*ch + ch/2 + 3.5);
+  return cv;
+}
+function drawTile(){
+  const cv=$("tile");
+  const cw = clampi(640/(C.cols*3), 2, 10);
+  const ch = Math.max(2, Math.round(cw*cellAspect()));
+  cv.width=C.cols*cw*3; cv.height=C.rows*ch*2;
+  const ctx=cv.getContext("2d");
+  for(let ty=0;ty<2;ty++)
+    for(let tx=0;tx<3;tx++)
+      for(let y=0;y<C.rows;y++)
+        for(let x=0;x<C.cols;x++){
+          ctx.fillStyle = C.palette[G[y*C.cols+x]] || C.palette[0];
+          ctx.fillRect((tx*C.cols+x)*cw, (ty*C.rows+y)*ch, cw, ch);
+        }
+  // repeat seams
+  ctx.strokeStyle="rgba(20,15,10,0.5)"; ctx.lineWidth=1; ctx.beginPath();
+  for(let tx=1;tx<3;tx++){ ctx.moveTo(tx*C.cols*cw+.5,0); ctx.lineTo(tx*C.cols*cw+.5,cv.height); }
+  ctx.moveTo(0,C.rows*ch+.5); ctx.lineTo(cv.width,C.rows*ch+.5);
+  ctx.stroke();
+}
+
+/* ================= render ================= */
+function renderCharts(){
+  const ids=Object.keys(S.charts).sort((a,b)=>S.charts[b].updated-S.charts[a].updated);
+  $("chartSel").innerHTML = ids.map(id=>
+    '<option value="'+id+'"'+(id===S.active?" selected":"")+'>'+esc(S.charts[id].name)+'</option>').join("");
+}
+function renderPalette(){
+  if(ACTIVE >= C.palette.length) ACTIVE = C.palette.length-1;
+  $("palette").innerHTML = C.palette.map((hexv,i)=>
+    '<button class="sw" type="button" data-idx="'+i+'" aria-pressed="'+(i===ACTIVE)+'"'+
+    ' style="background:'+esc(hexv)+'" aria-label="'+label(i)+' '+esc(hexv)+'">'+
+    '<span class="tag">'+label(i)+'</span></button>').join("");
+}
+function renderSetup(){
+  $("fCols").value=C.cols; $("fRows").value=C.rows;
+  $("stG").value=C.stG; $("rowG").value=C.rowG; $("mesh").value=C.mesh;
+  document.querySelectorAll("[data-mode]").forEach(b=>b.setAttribute("aria-pressed", b.dataset.mode===C.mode));
+  $("fStG").hidden=$("fRowG").hidden = C.mode!=="knit";
+  $("fMesh").hidden = C.mode!=="mesh";
+}
+function renderFacts(){
+  const p=physSize(), r2=x=>Math.round(x*100)/100;
+  const used = new Set(G).size;
+  $("facts").innerHTML = "<b>"+C.cols+" sts × "+C.rows+" rows</b> · "+used+" of "+
+    C.palette.length+" colors used · one repeat ≈ <b>"+r2(p.w)+" × "+r2(p.h)+" in</b> at "+
+    (C.mode==="knit" ? C.stG+" sts / "+C.rowG+" rows per 4 in" : C.mesh+"-count");
+  const issues = floatIssues(C.cols, C.rows, G, FLOAT_MAX);
+  const fw=$("floatwarn");
+  fw.classList.toggle("show", issues.length>0);
+  if(issues.length){
+    const shown = issues.slice(0,6).map(i=>"row "+i.row+" ("+i.run+" "+i.color+")").join(", ");
+    fw.textContent = "⚠ Floats over "+FLOAT_MAX+" sts — catch them or the fabric puckers: "+
+      shown + (issues.length>6 ? " … +"+(issues.length-6)+" more rows" : "");
+  }
+}
+function renderInstr(){
+  $("instr").textContent = instructionsText(C.cols, C.rows, G);
+}
+function redraw(){ drawChart(); drawTile(); renderFacts(); renderInstr(); }
+function renderAll(){ renderCharts(); renderSetup(); renderPalette(); redraw(); }
+
+/* ================= undo ================= */
+function snapshot(){
+  UNDO.push({ grid:encode(G), cols:C.cols, rows:C.rows });
+  if(UNDO.length>UNDO_DEPTH) UNDO.shift();
+  $("undoBtn").disabled=false;
+}
+$("undoBtn").addEventListener("click", ()=>{
+  const u=UNDO.pop(); if(!u) return;
+  C.cols=u.cols; C.rows=u.rows;
+  G=decode(u.grid, u.cols*u.rows);
+  save(); renderSetup(); redraw();
+  $("undoBtn").disabled = UNDO.length===0;
+});
+
+/* ================= painting ================= */
+function cellAt(e){
+  const cv=$("chart"), rect=cv.getBoundingClientRect();
+  const scale=cv.width/rect.width;
+  const cw=(cv.width-GUT_R)/C.cols, ch=(cv.height-GUT_B)/C.rows;
+  const x=Math.floor((e.clientX-rect.left)*scale/cw);
+  const y=Math.floor((e.clientY-rect.top)*scale/ch);
+  return (x>=0 && x<C.cols && y>=0 && y<C.rows) ? {x,y} : null;
+}
+let painting=false;
+function paintCell(x,y){
+  const to = TOOL==="erase" ? 0 : ACTIVE;
+  const i=y*C.cols+x;
+  if(G[i]!==to){ G[i]=to; return true; }
+  return false;
+}
+$("chart").addEventListener("pointerdown", e=>{
+  const c=cellAt(e); if(!c) return;
+  e.preventDefault();
+  $("chart").setPointerCapture(e.pointerId);
+  snapshot();
+  if(TOOL==="fill"){
+    const to = ACTIVE;
+    if(floodFill(G, C.cols, C.rows, c.x, c.y, to)===0) UNDO.pop();
+    save(); redraw(); renderCharts();
+    return;
+  }
+  painting=true;
+  if(paintCell(c.x,c.y)){ save(); redraw(); }
+});
+$("chart").addEventListener("pointermove", e=>{
+  if(!painting) return;
+  const c=cellAt(e); if(!c) return;
+  if(paintCell(c.x,c.y)){ save(); redraw(); }
+});
+["pointerup","pointercancel"].forEach(ev=>$("chart").addEventListener(ev, ()=>{
+  if(painting){ painting=false; renderCharts(); }
+}));
+
+/* ================= tools & palette events ================= */
+document.querySelectorAll("[data-tool]").forEach(b=>b.addEventListener("click", ()=>{
+  TOOL=b.dataset.tool;
+  document.querySelectorAll("[data-tool]").forEach(x=>x.setAttribute("aria-pressed", x.dataset.tool===TOOL));
+}));
+$("palette").addEventListener("click", e=>{
+  const b=e.target.closest(".sw"); if(!b) return;
+  ACTIVE=+b.dataset.idx;
+  renderPalette();
+});
+$("addColor").addEventListener("click", ()=>{
+  if(C.palette.length>=MAX_COLORS){ toast("Palette is full ("+MAX_COLORS+")"); return; }
+  $("colorIn").click();
+});
+$("colorIn").addEventListener("input", ()=>{
+  if(C.palette.length>=MAX_COLORS) return;
+  C.palette.push($("colorIn").value);
+  ACTIVE=C.palette.length-1;
+  save(); renderPalette(); toast("Added "+label(ACTIVE));
+});
+$("delColor").addEventListener("click", ()=>{
+  if(ACTIVE===0){ toast("MC is the background — it can't be removed"); return; }
+  if(!confirm("Remove color "+label(ACTIVE)+"? Its cells become MC.")) return;
+  snapshot();
+  G=removeColorFrom(G, ACTIVE);
+  C.palette.splice(ACTIVE,1);
+  ACTIVE=Math.min(ACTIVE, C.palette.length-1);
+  save(); renderPalette(); redraw();
+});
+$("clearBtn").addEventListener("click", ()=>{
+  if(!confirm("Clear the whole chart to MC?")) return;
+  snapshot();
+  G=new Array(C.cols*C.rows).fill(0);
+  save(); redraw();
+});
+
+/* ================= setup events ================= */
+$("sizeApply").addEventListener("click", ()=>{
+  const nc=clampi(num($("fCols").value)||C.cols, 4, 120);
+  const nr=clampi(num($("fRows").value)||C.rows, 4, 160);
+  if(nc*nr>MAX_CELLS){ toast("Too big — max "+MAX_CELLS+" cells"); return; }
+  if(nc===C.cols && nr===C.rows) return;
+  snapshot();
+  G=resizeGrid(G, C.cols, C.rows, nc, nr);
+  C.cols=nc; C.rows=nr;
+  save(); renderSetup(); redraw();
+  toast(nc+" × "+nr);
+});
+document.querySelectorAll("[data-mode]").forEach(b=>b.addEventListener("click", ()=>{
+  C.mode=b.dataset.mode; save(); renderSetup(); redraw();
+}));
+[["stG","stG"],["rowG","rowG"],["mesh","mesh"]].forEach(([id,key])=>{
+  $(id).addEventListener("input", ()=>{
+    const v=num($(id).value);
+    if(v!=null && v>0){ C[key]=v; save(); redraw(); }
+  });
+});
+
+/* ================= chart management ================= */
+$("chartSel").addEventListener("change", e=>{
+  S.active=e.target.value;
+  C=S.charts[S.active];
+  G=decode(C.grid, C.cols*C.rows);
+  UNDO=[]; $("undoBtn").disabled=true;
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(err){}
+  renderAll();
+});
+$("chartNew").addEventListener("click", ()=>{
+  const name=prompt("Name the chart:");
+  if(!name || !name.trim()) return;
+  const id=mkid();
+  S.charts[id]=mkchart(name.trim());
+  S.active=id; C=S.charts[id]; G=decode(C.grid, C.cols*C.rows);
+  UNDO=[]; $("undoBtn").disabled=true;
+  save(); renderAll();
+});
+$("chartRen").addEventListener("click", ()=>{
+  const name=prompt("Rename chart:", C.name);
+  if(!name || !name.trim()) return;
+  C.name=name.trim(); save(); renderCharts();
+});
+$("chartDel").addEventListener("click", ()=>{
+  if(Object.keys(S.charts).length<2){ toast("Can't delete the only chart"); return; }
+  if(!confirm('Delete "'+C.name+'"? This can\'t be undone.')) return;
+  delete S.charts[S.active];
+  S.active=Object.keys(S.charts)[0];
+  C=S.charts[S.active]; G=decode(C.grid, C.cols*C.rows);
+  UNDO=[]; $("undoBtn").disabled=true;
+  save(); renderAll();
+});
+
+/* ================= export ================= */
+function toast(m){ const t=$("toast"); t.textContent=m; t.classList.add("show");
+  clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove("show"),1900); }
+function copyText(text, ok){
+  const done=s=>toast(s?ok:"Copy failed — long-press to select");
+  if(navigator.clipboard && navigator.clipboard.writeText)
+    navigator.clipboard.writeText(text).then(()=>done(true)).catch(()=>fb());
+  else fb();
+  function fb(){const ta=document.createElement("textarea");ta.value=text;ta.style.position="fixed";
+    ta.style.opacity="0";document.body.appendChild(ta);ta.select();let o=false;
+    try{o=document.execCommand("copy");}catch(e){}document.body.removeChild(ta);done(o);}
+}
+$("copyInstr").addEventListener("click", ()=>{
+  const hdr="COLORWORK — "+C.name+" — "+C.cols+" sts × "+C.rows+" rows — in the round, read R→L, row 1 first\n"+
+    C.palette.map((h,i)=>label(i)+" = "+h).join("  ")+"\n";
+  copyText(hdr+instructionsText(C.cols,C.rows,G), "Instructions copied");
+});
+$("pngBtn").addEventListener("click", ()=>{
+  const cv=drawChart(document.createElement("canvas"), clampi(2400/C.cols, 8, 30));
+  cv.toBlob(blob=>{
+    const url=URL.createObjectURL(blob), a=document.createElement("a");
+    a.href=url; a.download="colorwork-"+C.name.replace(/[^\w-]+/g,"_")+"-"+C.cols+"x"+C.rows+".png";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),4000);
+    toast("PNG saved");
+  },"image/png");
+});
+$("printBtn").addEventListener("click", ()=>{
+  const cv=drawChart(document.createElement("canvas"), clampi(4000/C.cols, 8, 40));
+  const p=physSize(), r2=x=>Math.round(x*100)/100;
+  // the exported canvas includes label gutters; scale printed width accordingly
+  const chartFrac=(cv.width-GUT_R)/cv.width;
+  $("printimg").src=cv.toDataURL("image/png");
+  $("printimg").style.width=r2(p.w/chartFrac)+"in";
+  $("phead").textContent="Colorwork — "+C.name+" — "+C.cols+" × "+C.rows+" — "+
+    (C.mode==="knit" ? C.stG+" sts / "+C.rowG+" rows per 4 in" : C.mesh+"-count")+
+    " — repeat "+r2(p.w)+" × "+r2(p.h)+" in — print at 100% / Actual size";
+  setTimeout(()=>window.print(), 50);
+});
+
+/* ================= init ================= */
+renderAll();
+</script>
+</body>
+</html>

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Editing Stranded Colorwork Charts on a Gauge-True Grid</title>
+  <link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+  <header>
+    <nav>
+      <ul>
+        <li><a href="../../index.html">Home</a></li>
+        <li><a href="../../travelmap/">Travel Map</a></li>
+        <li><a href="../index.html">Blog</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <h1>Editing Stranded Colorwork Charts on a Gauge-True Grid</h1>
+      <time datetime="2026-07-01">July 2026</time>
+
+      <p>Colorwork is a chart editor for stranded knitting and needlepoint: paint a motif cell by cell on a grid whose cells carry the actual stitch:row aspect, see it tiled as a repeat, read it back as per-row written instructions, and get warned when a float runs longer than the catch limit. Multiple named charts persist locally, every stroke saves instantly, and the outputs are PNG export, true-physical-size printing, and copyable instructions [1].</p>
+
+      <h2>The problem</h2>
+      <p>The Image Chart converter [2] answers "turn this picture into a chart," but most colorwork doesn't start from a picture — it starts from nothing, or from a motif in the knitter's head, designed stitch by stitch. Doing that on paper hits the same two walls as always: square graph paper lies about proportions (the charted snowflake knits up squat), and a single drawn motif hides how the <em>repeat</em> reads — whether the tiled pattern flows or visibly seams at every join. A third failure is silent until blocking: a color that floats behind 9 stitches puckers the fabric unless it was caught, and nothing on paper flags it.</p>
+
+      <h2>How it works</h2>
+      <p>Charts are named projects in a dropdown, most recently touched first, like the row counter [3]. Set the grid (up to 120 × 160) and the cell mode — knitter's gauge (cells proportioned <code>stitch gauge : row gauge</code>) or square for mesh work. Then paint: <strong>Paint</strong> drags across cells, <strong>Fill</strong> floods a region, <strong>Erase</strong> returns cells to MC. The palette starts as MC plus three contrast colors and grows to twelve; removing a color returns its cells to MC. Undo reverses the last fifty strokes, fills, clears, and resizes.</p>
+
+      <figure>
+        <img loading="lazy" src="/kimberlytravel/blog/img/PLACEHOLDER-colorwork-editor.png" alt="Colorwork editor showing a motif painted on a gauge-true grid with the palette, numbering, and float warning">
+        <figcaption>The editor: gauge-true cells, chart numbering from the bottom-right, palette, and a float warning. Placeholder pending a real screenshot.</figcaption>
+      </figure>
+
+      <p>Below the editor, the <strong>repeat preview</strong> tiles the motif 3 × 2 with faint seam lines — the live answer to "does this repeat flow?" The <strong>written instructions</strong> panel renders every row as run-length text, and a copy button prefixes the palette key.</p>
+
+      <h2>The conventions</h2>
+      <p>The grid follows knitting-chart convention throughout, because a chart that numbers like a book reads wrong on the needles:</p>
+      <ul>
+        <li><strong>Row 1 is the bottom row; stitch 1 is the rightmost column.</strong> Numbering sits in the right and bottom gutters, and the bold every-10 rules count from that corner — not from the top-left as ordinary graph paper would.</li>
+        <li><strong>Instructions read in the round:</strong> right to left, bottom row first. A 3 × 2 test grid with one contrast cell in each corner row renders exactly as <code>Row 1: 1 B, 2 MC</code> then <code>Row 2: 2 MC, 1 A</code>.</li>
+        <li><strong>Resizing anchors the bottom-right</strong> — row 1 and stitch 1 stay fixed, and the chart grows upward and to the left, the direction knitting actually grows.</li>
+      </ul>
+
+      <h2>The math</h2>
+      <h3>Float detection</h3>
+      <p>In stranded knitting, a run of <em>k</em> stitches in one color means the other strand floats behind all <em>k</em>. Per row, the tool run-length encodes the cells and takes the longest run; in any row using two or more colors, a run longer than 5 stitches raises the warning, naming the row (chart numbering) and the worst run — e.g. <code>row 7 (9 MC)</code>. Solid rows are exempt: nothing is stranded behind them.</p>
+      <pre><code>longest run per row  =  max over RLE segments
+warn when            :  row has ≥ 2 colors AND longest run &gt; 5</code></pre>
+      <p>With more than two colors in a row the true float length per strand is approximate (each unused color floats independently), which the tool treats as a reason to warn conservatively rather than model precisely.</p>
+      <h3>Storage</h3>
+      <p>A chart's cells are stored as a compact string, one hex digit per cell — which is why the palette caps at twelve colors — so a full 120 × 160 chart costs 19,200 characters in <code>localStorage</code>. Every stroke writes immediately; there is no save button to forget.</p>
+
+      <h2>Editing the config</h2>
+      <p>The constants at the top of the <code>&lt;script&gt;</code> block: <code>FLOAT_MAX</code> (5 — the catch limit, adjust to house preference), <code>HEAVY</code> (bold rule every 10), <code>MAX_COLORS</code> (12), <code>MAX_CELLS</code> (19,200), <code>UNDO_DEPTH</code> (50), and <code>DEFAULT_PALETTE</code> (the MC + three contrasts a new chart starts with). Charts live under <code>colorwork.v1</code>.</p>
+
+      <h2>Limitations</h2>
+      <ul>
+        <li>It charts color per cell only — no stitch symbols (cables, decreases, lace). It is a colorwork editor, not a full stitch-chart editor.</li>
+        <li>The float warning is a per-row worst-run summary against a single threshold; it does not model catch placement or multi-strand float lengths exactly.</li>
+        <li>Charts are per-device (<code>localStorage</code>). The PNG and the copied instructions are the portable forms.</li>
+        <li>Print scale depends on the print dialog: 100% / Actual Size, verified once against a ruler, same as Graph Paper [4].</li>
+        <li>The repeat preview tiles edge-to-edge; motifs designed with half-drop or offset repeats are not previewed in that arrangement.</li>
+      </ul>
+
+      <section>
+        <h2>References</h2>
+        <ol>
+          <li><a href="../../tools/colorwork.html">Colorwork Chart Editor</a></li>
+          <li><a href="../../tools/imagechart.html">Image Chart Converter</a> — the companion for starting from a photo instead of a blank grid.</li>
+          <li><a href="../../tools/rowcounter.html">Row &amp; Repeat Counter</a> — the multi-project pattern this tool's chart management follows.</li>
+          <li><a href="../../tools/graphpaper.html">Gauge-True Graph Paper</a> — the source of the cell-aspect math and the true-size print technique.</li>
+        </ol>
+      </section>
+    </article>
+  </main>
+
+  <footer>
+    <hr>
+    <p>This website's source code is open and available on <a href="https://github.com/mds08011/kimberlytravel">Github</a>.</p>
+  </footer>
+</body>
+</html>
