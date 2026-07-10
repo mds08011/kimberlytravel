@@ -1,10 +1,13 @@
 <!DOCTYPE html>
 <!--
-  SKEIN MATH — Yarn Sufficiency & Gauge Conversion
-  v1.1.0 · 2026-07-08
+  SKEIN MATH — Yarn Sufficiency, Gauge Conversion, Shaping & Length
+  v1.2.0 · 2026-07-09
   First tool of the fiber-arts suite. Single-file, offline, zero dependencies.
   Panel A: kitchen-scale yardage — do I have enough to finish?
   Panel B: gauge conversion — pattern gauge vs. my swatch, with repeat rounding.
+  Panel C: even shaping — distribute increases/decreases across a row or over rows.
+  Panel D: length adjustment — turn an inches change into rows, reshaping any
+           in-section shaping over the new row count (reuses Panel C's overRows).
   Yarn stash (ball-band data) persists in localStorage.
 -->
 <html lang="en">
@@ -132,7 +135,7 @@
 
   <header>
     <h1>Skein <span class="amp">&amp;</span> Gauge</h1>
-    <span class="ver">skein math · v1.1.0 · offline</span>
+    <span class="ver">skein math · v1.2.0 · offline</span>
   </header>
 
   <section aria-label="Yarn sufficiency">
@@ -251,6 +254,38 @@
     </div>
   </section>
 
+  <section aria-label="Length adjustment">
+    <h2>Length adjustment</h2>
+    <p class="sub">"Pattern says 15 in to the armhole, I need 17" — the rows that adds, and any shaping in the section reworked over the new length.</p>
+    <div class="card">
+      <div class="grid">
+        <div class="field"><label for="laPat" id="laPatLabel">Pattern length in</label>
+          <input id="laPat" type="number" inputmode="decimal" step="0.25" placeholder="15"></div>
+        <div class="field"><label for="laTgt" id="laTgtLabel">Target length in</label>
+          <input id="laTgt" type="number" inputmode="decimal" step="0.25" placeholder="17"></div>
+        <div class="field"><label for="laRowG" id="laRowGLabel">Rows / 4 in</label>
+          <input id="laRowG" type="number" inputmode="decimal" step="0.5" placeholder="28"></div>
+        <div class="field"><label for="laPatRows">Pattern rows (opt.)</label>
+          <input id="laPatRows" type="number" inputmode="numeric" step="1" placeholder="—"></div>
+      </div>
+      <p class="sub" style="margin:12px 0 8px">Shaping in this section? (optional — redistributes it over the new length)</p>
+      <div class="grid">
+        <div class="field"><label for="laStart">Start sts</label>
+          <input id="laStart" type="number" inputmode="numeric" step="1" placeholder="—"></div>
+        <div class="field"><label for="laEnd">End sts</label>
+          <input id="laEnd" type="number" inputmode="numeric" step="1" placeholder="—"></div>
+        <div class="field"><label for="laPer">Sts / shaping row</label>
+          <input id="laPer" type="number" inputmode="numeric" step="1" placeholder="2"></div>
+      </div>
+      <div class="result" id="laResult" hidden>
+        <span class="bignum" id="laBig" style="color:var(--madder)">—</span>
+        <div class="resline" id="laLine1"></div>
+        <div class="resline" id="laLine2"></div>
+        <div class="note" id="laNote"></div>
+      </div>
+    </div>
+  </section>
+
   <footer>
     Yardage from weight assumes even winding: <code>remaining = (grams left ÷ ball grams) × ball length</code>.
     The verdict wants a ≥10% margin — seams, swatches, and one frogged section eat yarn.
@@ -258,6 +293,8 @@
     then rounded to your stitch repeat if you set one. Same rule works for rows.
     Shaping distributes changes as evenly as the stitch count allows — leftover stitches
     land in the larger groups, and the instruction reads the way a pattern would write it.
+    Length adjustment converts an inches change to rows at your row gauge and, when the
+    section is shaped, redistributes that shaping over the new row count.
     Saved yarns live in this browser only (<code>localStorage</code>).
   </footer>
 </div>
@@ -272,11 +309,12 @@ const YD_PER_M = 1.0936133;
 /* ================= state ================= */
 let S = load();
 function load(){
+  const def = { unit:"yd", basis:4, shmode:"across", shdir:"dec", stash:{}, last:{} };  // stash: name -> {g, len, unit}
   try{
     const raw = localStorage.getItem(LS_KEY);
-    if(raw){ const p = JSON.parse(raw); if(p && p.stash) return p; }
+    if(raw){ const p = JSON.parse(raw); if(p && p.stash) return Object.assign(def, p); }  // merge so older states load with new defaults
   }catch(e){}
-  return { unit:"yd", basis:4, shmode:"across", shdir:"dec", stash:{}, last:{} };  // stash: name -> {g, len, unit}
+  return def;
 }
 function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){} }
 const $   = id => document.getElementById(id);
@@ -380,8 +418,13 @@ function setBasis(b){
   S.basis=b; save();
   $("patStLabel").textContent = `Pattern sts / ${b===4?"4 in":"10 cm"}`;
   $("myStLabel").textContent  = `My sts / ${b===4?"4 in":"10 cm"}`;
+  const uName = b===4 ? "in" : "cm";
+  $("laPatLabel").textContent = `Pattern length ${uName}`;
+  $("laTgtLabel").textContent = `Target length ${uName}`;
+  $("laRowGLabel").textContent= `Rows / ${b===4?"4 in":"10 cm"}`;
   document.querySelectorAll("[data-basis]").forEach(x=>x.setAttribute("aria-pressed", +x.dataset.basis===b));
   calcGauge();
+  calcLength();
 }
 function renderStash(){
   const names=Object.keys(S.stash).sort((a,b)=>a.localeCompare(b));
@@ -534,6 +577,41 @@ function setShDir(d){
   calcShaping();
 }
 
+/* ================= panel D: length adjustment ================= */
+/* delta_rows from an inches change at row gauge; if shaping fields are set,
+   reuse overRows() to redistribute it over the NEW section row count. */
+function calcLength(){
+  const basis=S.basis, uName = basis===4 ? "in" : "cm";
+  const patLen=num($("laPat").value), tgtLen=num($("laTgt").value), rowG=num($("laRowG").value);
+  const res=$("laResult");
+  const show = patLen!=null && tgtLen!=null && rowG!=null && rowG>0;
+  res.hidden = !show;
+  if(!show) return;
+  const delta = Math.round((tgtLen - patLen) * rowG / basis);
+  $("laBig").style.color = delta===0 ? "var(--faint)" : "var(--madder)";
+  $("laNote").textContent = "";
+  $("laBig").textContent = delta>0 ? "work "+delta+" more row"+(delta>1?"s":"")
+                         : delta<0 ? "work "+(-delta)+" fewer row"+(-delta>1?"s":"")
+                         : "same row count";
+  const rowsPerU = rowG/basis, patRows = num($("laPatRows").value);
+  const parts = ["Δ "+r1(tgtLen-patLen)+" "+uName+" × "+r1(rowsPerU)+" rows/"+uName+" = "+(delta>=0?"+":"")+delta+" rows"];
+  let newRows;
+  if(patRows!=null && patRows>0){ newRows = patRows + delta; parts.push("section <b>"+patRows+"</b> → <b>"+newRows+"</b> rows"); }
+  else newRows = Math.max(1, Math.round(tgtLen * rowsPerU));
+  $("laLine1").innerHTML = parts.join(" · ");
+  // optional: reshape in-section shaping over the new row count (reuses overRows)
+  const start=num($("laStart").value), end=num($("laEnd").value), per=num($("laPer").value);
+  if(start!=null && end!=null){
+    if(start===end){ $("laLine2").innerHTML=""; return; }
+    const out = overRows(start, end, newRows, per||2, null);
+    if(out.err){ $("laLine2").innerHTML=""; $("laNote").textContent = "Shaping: "+out.err; return; }
+    const p=[];
+    if(out.bigN>0)   p.push((out.dir==="inc"?"inc":"dec")+" "+out.per+" every "+ordinal(out.bigEvery)+" row, "+out.bigN+"×");
+    if(out.smallN>0) p.push((out.dir==="inc"?"inc":"dec")+" "+out.per+" every "+ordinal(out.smallEvery)+" row, "+out.smallN+"×");
+    $("laLine2").innerHTML = "reshape over "+newRows+" rows: <b>"+p.join(", then ")+"</b>";
+  } else $("laLine2").innerHTML="";
+}
+
 /* ================= init ================= */
 document.querySelectorAll("[data-shmode]").forEach(b=>
   b.addEventListener("click", ()=>setShMode(b.dataset.shmode)));
@@ -541,6 +619,8 @@ document.querySelectorAll("[data-shdir]").forEach(b=>
   b.addEventListener("click", ()=>setShDir(b.dataset.shdir)));
 ["shN","shC","shStart","shEnd","shRows","shPer"].forEach(id=>
   $(id).addEventListener("input", calcShaping));
+["laPat","laTgt","laRowG","laPatRows","laStart","laEnd","laPer"].forEach(id=>
+  $(id).addEventListener("input", calcLength));
 
 setUnit(S.unit); setBasis(S.basis); renderStash();
 setShMode(S.shmode); setShDir(S.shdir);

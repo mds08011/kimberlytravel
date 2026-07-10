@@ -87,6 +87,20 @@ result = the candidate nearest target</code></pre>
       <h3>Configuration</h3>
       <p>The shaping logic lives in the <code>acrossInstruction()</code> and <code>overRows()</code> functions in the <code>&lt;script&gt;</code> block; the decrease/increase verbs (k2tog/kfb) are set in <code>acrossInstruction()</code>. Mode and direction selections persist with the rest of the tool state under <code>skeinmath.v1</code>.</p>
 
+      <h2>Update: length adjustment (v1.2.0)</h2>
+      <p>Version 1.2.0 adds a fourth panel for the most common pattern adaptation: the pattern is written to one length and you want another. Enter the pattern length, your target, and the row gauge (in the same in/cm the gauge basis is set to), and it reports the signed row change and the new section total.</p>
+      <h3>The math</h3>
+      <pre><code>delta_rows = round( (target_length − pattern_length) × row_gauge ÷ basis )</code></pre>
+      <p>At 28 rows / 4 in, adding 2 inches is <code>round(2 × 28 ÷ 4) = 14</code> rows — reported as "work 14 more rows", with the section's new total shown when the pattern's row count for that section is given.</p>
+      <h3>Reshaping the shaping</h3>
+      <p>The trap in lengthening a shaped section — a waist that increases from 48 to 96 stitches, say — is that the same increases now have to spread over more rows. If the shaping fields are filled, the panel recomputes the distribution over the new row count by <strong>calling the same <code>overRows()</code> function the shaping panel uses</strong> — not a copy of it — so the two panels can never drift. Lengthening the 48→96 waist over a section grown to 119 rows yields "inc 2 every 5th row, 23×, then inc 2 every 4th row, 1×". An adjustment that leaves too few rows for the required shaping surfaces <code>overRows()</code>'s own error text in place of an instruction.</p>
+      <figure>
+        <img loading="lazy" src="/kimberlytravel/blog/img/skeinmath-length.png" alt="Length adjustment panel: pattern and target length, row gauge, and the resulting row change with the shaping reworked over the new row count">
+        <figcaption>The v1.2.0 length-adjustment panel: an inches change turned into rows, with the section's shaping reworked to fit.</figcaption>
+      </figure>
+      <h3>Configuration</h3>
+      <p>The panel is <code>calcLength()</code> in the <code>&lt;script&gt;</code> block; the length inputs follow the gauge basis toggle (per 4 in → inches, per 10 cm → centimetres). No new persisted state — the tool's <code>load()</code> merges any older <code>skeinmath.v1</code> object over the current defaults, so existing saved yarns and settings carry forward untouched.</p>
+
       <section>
         <h2>References</h2>
         <ol>
