@@ -59,10 +59,35 @@ Rows 7–13: A     ← 3 + 4 merged across the boundary</code></pre>
         <li>Plans are per-device (<code>localStorage</code>); the copied schedule is the portable form.</li>
       </ul>
 
+      <h2>Update: temperature blankets &amp; computed yardage (v2.0.0)</h2>
+      <p>Version 2.0.0 adds a second mode and reworks the yarn estimate. A mode toggle at the top switches between the stripe sequence above and a <strong>temperature blanket</strong> planner; the palette is now a list of named colors, each with optional ball-band grams and length that can be pulled read-only from the Skein &amp; Gauge stash [2].</p>
+
+      <h3>Temperature blanket mode</h3>
+      <p>A year of daily temperatures is <strong>pasted in</strong> — one number per line, or CSV with a numeric column — because the offline rule forbids a weather API. The parser finds the numeric column and skips headers and malformed rows (a strict bare-number test keeps a <code>2026-01-01</code> date from being read as the number 2026), reporting how many days parsed and how many lines it skipped. Ordered bins map temperature ranges to colors; each bin colors temps up to its cutoff and the last bin catches everything above. A distribution readout shows days-per-bin <em>before</em> you commit — so a bin holding 120 of 365 days, which is a lot of one color to buy, is visible while it can still be rebalanced. Boundaries are inclusive-low: a 40.0° reading lands in the 40–49 bin, not the &lt;40 one. Any day that falls outside every bin is listed in a warning rather than silently dropped.</p>
+
+      <figure>
+        <img loading="lazy" src="/kimberlytravel/blog/img/stripeplan-temp.png" alt="Stripe Plan in temperature-blanket mode: named palette, temperature bins with a legend and days-per-bin readout, and a to-scale blanket preview showing the seasonal curve">
+        <figcaption>Temperature-blanket mode: bins with a legend and days-per-bin distribution, and the to-scale preview where the seasonal curve is legible top to bottom.</figcaption>
+      </figure>
+
+      <h3>Computed yardage (supersedes the apportionment above)</h3>
+      <p>The v1 model apportioned a pattern's stated total by row share. Since a temperature blanket has no such total, v2 <strong>estimates</strong> yards-per-row from the fabric instead, and both modes now use it:</p>
+      <pre><code>yards_per_row = stitches × (basis ÷ stitch_gauge) × fabric_factor ÷ 36
+skeins        = ceil(yards × 1.10 ÷ ball_length)     (10% margin)</code></pre>
+      <p>The fabric factor (default 3.0, the ratio of yarn-path length to stitch width for stockinette) is a visible, tunable field — garter and crochet run higher. It is an <strong>estimate</strong>, and one measured row beats any factor: a <em>Measured yд/row</em> override, when set, wins outright. Skeins appear per color wherever a ball length is set. The stripe mode also gains a <strong>Fibonacci fill</strong> (1, 1, 2, 3, 5, 8… widths cycling the palette) and a "repeat to N rows" control.</p>
+
+      <h3>v2 limitations</h3>
+      <ul>
+        <li>Yards-per-row is an estimate governed by the fabric factor; measure one row and enter it to override the guess.</li>
+        <li>Temperature data is paste-in by design — the tool never goes online. Any weather source is copied in by hand.</li>
+        <li>A plan is one mode at a time; a project mixing a temperature body with a striped border is two plans.</li>
+      </ul>
+
       <section>
         <h2>References</h2>
         <ol>
           <li><a href="../../tools/stripeplan.html">Stripe Plan</a></li>
+          <li><a href="../../tools/skeinmath.html">Skein &amp; Gauge Calculator</a> — the ball-band stash this tool reads read-only.</li>
           <li><a href="../../tools/rowcounter.html">Row &amp; Repeat Counter</a> — pin the schedule's change rows as row notes while knitting.</li>
         </ol>
       </section>

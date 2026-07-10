@@ -1,21 +1,27 @@
 <!DOCTYPE html>
 <!--
-  STRIPE PLAN — Stripe Sequence Planner
-  v1.0.0 · 2026-07-09
+  STRIPE PLAN — Stripe Sequence & Temperature Blanket Planner
+  v2.0.0 · 2026-07-09
   Fiber-arts suite, companion to colorwork.html / rowcounter.html / skeinmath.html.
   Single-file, offline, zero dependencies.
-  Build an ordered stripe sequence (color × rows, repeated ×N), see the fabric
-  to scale at your row gauge, read it back as a merged row schedule
-  ("Rows 1-6: A"), and get per-color totals: rows, share, apportioned yardage,
-  and whether each color can be carried up the side or must be cut.
-  Multiple named plans persist in localStorage (stripeplan.v1).
+  Two modes:
+    A) Stripe sequence — ordered color×rows stripes, repeated ×N, with a
+       Fibonacci quick-fill, to-scale fabric preview, merged row schedule, and
+       carry-or-cut edge analysis.
+    B) Temperature blanket — paste a year of daily temps, bin them to colors,
+       one row per day; distribution readout so you can rebalance before buying.
+  Both modes estimate yards-per-row from gauge + a fabric factor (or a measured
+  override) and give per-color rows / yards / skeins.
+  Palette colors carry optional ball-band data; can prefill READ-ONLY from the
+  Skein & Gauge stash (localStorage "skeinmath.v1"). Plans persist in
+  localStorage (stripeplan.v1); backward-compatible with v1 plans.
 -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1b1512">
-<title>Stripe Plan — Sequence Planner</title>
+<title>Stripe Plan — Sequence & Temperature Blanket</title>
 <style>
   :root{
     --bg:#1b1512; --panel:#241c17; --panel2:#2d231c; --line:#3e3128;
@@ -54,13 +60,28 @@
   .btn:active{background:var(--panel)}
   .btn.primary{border-color:var(--madder);color:var(--madder)}
   .btn.small{padding:6px 10px;font-size:.76rem}
-  .btn:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--madder);outline-offset:2px}
+  .btn:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{
+    outline:2px solid var(--madder);outline-offset:2px}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{appearance:none;border:none;background:var(--panel2);color:var(--dim);
+    padding:8px 14px;font-size:.82rem;font-weight:700;cursor:pointer}
+  .seg button[aria-pressed="true"]{background:var(--madder);color:#2a1414}
+  .seg.mode button{padding:9px 16px;font-size:.9rem}
 
-  /* palette */
-  .palette{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px;padding-bottom:12px}
-  .sw{width:34px;height:34px;border-radius:8px;border:2px solid var(--line);position:relative;flex:none}
-  .sw .tag{position:absolute;left:50%;bottom:-15px;transform:translateX(-50%);
-    font-family:var(--mono);font-size:.6rem;color:var(--faint)}
+  /* palette editor */
+  .palrow{display:flex;gap:8px;align-items:center;background:var(--panel2);
+    border:1px solid var(--line);border-radius:10px;padding:8px 9px;margin-bottom:8px;flex-wrap:wrap}
+  .palrow input[type=color]{width:34px;height:34px;padding:0;border:1px solid var(--line);
+    border-radius:8px;background:none;cursor:pointer;flex:none}
+  .palrow .pname{flex:1;min-width:80px;background:var(--panel);border:1px solid var(--line);
+    border-radius:7px;color:var(--ink);font-size:.9rem;padding:7px 9px}
+  .palrow .pg,.palrow .pl{width:64px;background:var(--panel);border:1px solid var(--line);
+    border-radius:7px;color:var(--ink);font-family:var(--mono);font-size:.9rem;padding:7px 6px;text-align:right}
+  .palrow .pstash{background:var(--panel);border:1px solid var(--line);border-radius:7px;
+    color:var(--dim);font-size:.78rem;padding:7px 6px;appearance:none;max-width:120px}
+  .palrow .mv{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--dim);
+    border-radius:7px;width:30px;height:34px;cursor:pointer;font-size:.85rem;flex:none}
+  .palrow .mini{font-size:.6rem;color:var(--faint);letter-spacing:.06em;text-transform:uppercase}
 
   /* stripe rows */
   .stripes{display:flex;flex-direction:column;gap:8px}
@@ -78,7 +99,8 @@
   input[type=number]{-moz-appearance:textfield}
 
   .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
-  @media(max-width:430px){.grid{grid-template-columns:1fr 1fr}}
+  .grid.four{grid-template-columns:repeat(4,1fr)}
+  @media(max-width:460px){.grid,.grid.four{grid-template-columns:1fr 1fr}}
   .field{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 10px}
   .field label{display:block;font-size:.62rem;font-weight:700;letter-spacing:.12em;
     text-transform:uppercase;color:var(--dim);margin-bottom:3px}
@@ -86,17 +108,42 @@
     font-family:var(--mono);font-size:1.1rem;font-weight:600;padding:0}
   .field input:focus{outline:none}
   .field:focus-within{border-color:var(--madder)}
+  .field.adv{border-style:dashed}
+
+  textarea.temps{width:100%;min-height:90px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:10px;color:var(--ink);font-family:var(--mono);font-size:.85rem;padding:10px;resize:vertical}
+  textarea.temps:focus{outline:none;border-color:var(--madder)}
+
+  /* bins */
+  .binrow{display:flex;gap:8px;align-items:center;background:var(--panel2);
+    border:1px solid var(--line);border-radius:10px;padding:7px 9px;margin-bottom:7px}
+  .binrow .rng{font-family:var(--mono);font-size:.82rem;color:var(--dim);flex:1}
+  .binrow .rng b{color:var(--ink)}
+  .binrow .bmax{width:70px;background:var(--panel);border:1px solid var(--line);border-radius:7px;
+    color:var(--ink);font-family:var(--mono);font-size:.9rem;padding:6px;text-align:right}
+  .binrow .bcol{background:var(--panel);border:1px solid var(--line);border-radius:7px;
+    color:var(--ink);font-size:.82rem;padding:6px;appearance:none}
+  .binrow .mv{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--dim);
+    border-radius:7px;width:30px;height:32px;cursor:pointer;flex:none}
+  .legend{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .legpill{display:inline-flex;align-items:center;gap:6px;font-size:.75rem;color:var(--dim);
+    background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:4px 10px}
+  .legpill .sw{width:13px;height:13px;border-radius:3px;border:1px solid var(--line)}
 
   .facts{font-family:var(--mono);font-size:.78rem;color:var(--dim);margin-top:12px;line-height:1.6}
   .facts b{color:var(--ink)}
+  .warn{margin-top:10px;border:1px solid var(--weld);border-radius:10px;padding:9px 12px;
+    font-size:.82rem;color:var(--weld);display:none}
+  .warn.show{display:block}
 
   /* preview */
   .previewcard{background:#fbf7f0;border:1px solid var(--line);border-radius:10px;padding:10px}
   .previewcard svg{display:block;width:100%;height:auto}
 
   /* per-color table */
-  table{border-collapse:collapse;width:100%;margin-top:4px}
-  th,td{padding:7px 9px;border-bottom:1px solid var(--line);text-align:left;font-size:.84rem}
+  .tablewrap{overflow-x:auto}
+  table{border-collapse:collapse;width:100%;margin-top:4px;min-width:420px}
+  th,td{padding:7px 9px;border-bottom:1px solid var(--line);text-align:left;font-size:.84rem;white-space:nowrap}
   th{font-size:.62rem;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:var(--dim)}
   td.n{font-family:var(--mono)}
   td .chip{display:inline-block;width:16px;height:16px;border-radius:4px;
@@ -127,7 +174,7 @@
 
   <header>
     <h1>Stripe <span class="amp">Plan</span></h1>
-    <span class="ver">sequence planner · v1.0.0 · offline</span>
+    <span class="ver">stripe &amp; temp blanket · v2.0.0 · offline</span>
   </header>
 
   <section aria-label="Plan">
@@ -137,66 +184,133 @@
       <button class="btn" id="planRen" type="button">Rename</button>
       <button class="btn" id="planDel" type="button">Delete</button>
     </div>
+    <div class="toolrow" style="margin-top:10px">
+      <span class="seg mode" role="group" aria-label="Mode">
+        <button type="button" data-mode="stripe" aria-pressed="true">Stripe sequence</button>
+        <button type="button" data-mode="temp" aria-pressed="false">Temperature blanket</button>
+      </span>
+    </div>
   </section>
 
-  <section aria-label="Sequence">
+  <section aria-label="Fabric setup">
+    <h2>Fabric &amp; gauge</h2>
+    <p class="sub">Sets the yarn-per-row estimate and the true preview scale.</p>
+    <div class="card">
+      <div class="toolrow" style="margin-bottom:10px">
+        <span class="seg" role="group" aria-label="Gauge basis">
+          <button type="button" data-basis="4" aria-pressed="true">per 4 in</button>
+          <button type="button" data-basis="10" aria-pressed="false">per 10 cm</button>
+        </span>
+        <span class="seg" role="group" aria-label="Length unit">
+          <button type="button" data-unit="yd" aria-pressed="true">yd</button>
+          <button type="button" data-unit="m" aria-pressed="false">m</button>
+        </span>
+      </div>
+      <div class="grid">
+        <div class="field"><label for="fSts">Stitches per row</label>
+          <input id="fSts" type="number" inputmode="numeric" min="1" max="600" step="1" placeholder="100"></div>
+        <div class="field"><label for="fStG" id="fStGLabel">Sts / 4 in</label>
+          <input id="fStG" type="number" inputmode="decimal" min="1" max="60" step="0.5" placeholder="18"></div>
+        <div class="field"><label for="fRowG" id="fRowGLabel">Rows / 4 in</label>
+          <input id="fRowG" type="number" inputmode="decimal" min="1" max="80" step="0.5" placeholder="24"></div>
+        <div class="field adv"><label for="fFactor">Fabric factor</label>
+          <input id="fFactor" type="number" inputmode="decimal" min="1" max="8" step="0.1" placeholder="3.0"></div>
+        <div class="field adv"><label for="fMeas" id="fMeasLabel">Measured yd/row</label>
+          <input id="fMeas" type="number" inputmode="decimal" min="0" step="0.1" placeholder="override"></div>
+      </div>
+      <div class="facts" id="yprFacts"></div>
+    </div>
+  </section>
+
+  <section aria-label="Palette">
+    <h2>Palette</h2>
+    <p class="sub">2–12 colors. Ball-band grams &amp; length are optional — set them for a skein estimate, or pull from your Skein &amp; Gauge stash.</p>
+    <div class="card">
+      <div id="paletteEd"></div>
+      <div class="rowbtns">
+        <button class="btn small" id="addColor" type="button">＋ Add color</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- MODE A: stripe sequence -->
+  <section aria-label="Sequence" id="modeStripe">
     <h2>Sequence</h2>
     <p class="sub">One repeat of the stripe pattern, top of the list knit first.</p>
     <div class="card">
-      <div class="palette" id="palette"></div>
-      <div class="toolrow" style="margin-bottom:12px">
-        <button class="btn small" id="addColor" type="button">＋ Add color</button>
-        <button class="btn small" id="delColor" type="button">− Remove last color</button>
-        <input id="colorIn" type="color" value="#8fa8dc" style="position:absolute;opacity:0;pointer-events:none">
-      </div>
       <div class="stripes" id="stripes"></div>
       <div class="rowbtns">
         <button class="btn primary" id="addStripe" type="button">＋ Add stripe</button>
+        <button class="btn" id="fibFill" type="button">Fibonacci fill</button>
       </div>
-      <div class="grid">
+      <div class="grid two" style="grid-template-columns:1fr 1fr">
         <div class="field"><label for="fReps">Repeat sequence ×</label>
           <input id="fReps" type="number" inputmode="numeric" min="1" max="99" step="1"></div>
-        <div class="field"><label for="fRowG">Rows / 4 in</label>
-          <input id="fRowG" type="number" inputmode="decimal" min="4" max="80" step="0.5"></div>
-        <div class="field"><label for="fYd">Pattern total yd (opt.)</label>
-          <input id="fYd" type="number" inputmode="decimal" min="0" step="1" placeholder="—"></div>
+        <div class="field"><label for="fToN">…or repeat to N rows</label>
+          <input id="fToN" type="number" inputmode="numeric" min="0" step="1" placeholder="e.g. 300"></div>
       </div>
       <div class="facts" id="facts"></div>
     </div>
   </section>
 
+  <!-- MODE B: temperature blanket -->
+  <section aria-label="Temperatures" id="modeTemp" hidden>
+    <h2>Daily temperatures</h2>
+    <p class="sub">Paste one number per line, or CSV with a numeric column — a year of highs is typical. No internet needed.</p>
+    <div class="card">
+      <textarea class="temps" id="tempsIn" placeholder="34&#10;36&#10;41&#10;… or  date,high&#10;2026-01-01,34"></textarea>
+      <div class="rowbtns">
+        <button class="btn primary" id="parseTemps" type="button">Parse temps</button>
+        <button class="btn" id="clearTemps" type="button">Clear</button>
+      </div>
+      <div class="facts" id="tempFacts"></div>
+
+      <h2 style="margin-top:18px">Bins</h2>
+      <p class="sub">Each row colors temps up to its cutoff; the last row catches everything above.</p>
+      <div id="binEd"></div>
+      <div class="rowbtns">
+        <button class="btn small" id="addBin" type="button">＋ Add bin</button>
+      </div>
+      <div class="legend" id="legend"></div>
+      <div class="warn" id="binWarn"></div>
+      <div class="facts" id="distFacts"></div>
+    </div>
+  </section>
+
   <section aria-label="Preview">
-    <h2>Fabric preview</h2>
-    <p class="sub">Drawn to scale at your row gauge — dashed lines mark repeat boundaries.</p>
+    <h2>Blanket preview</h2>
+    <p class="sub">Drawn to scale at your row gauge.</p>
     <div class="previewcard"><svg id="preview"></svg></div>
   </section>
 
   <section aria-label="Per color">
     <h2>Per color</h2>
-    <p class="sub">Rows, share of the fabric, apportioned yardage, and carry-or-cut along the edge.</p>
+    <p class="sub" id="tableSub">Rows, share, estimated yards, skeins to buy, and carry-or-cut along the edge.</p>
     <div class="card">
-      <div id="colorTable"></div>
-      <div class="note">Carry verdicts assume the yarn travels up one edge; over more than
-        6 rows an uncaught carry snags — cut and weave instead, or catch it mid-way.</div>
+      <div class="tablewrap"><div id="colorTable"></div></div>
+      <div class="note" id="tableNote"></div>
     </div>
   </section>
 
-  <section aria-label="Row schedule">
+  <section aria-label="Row schedule" id="schedSec">
     <h2>Row schedule</h2>
     <p class="sub">Merged ranges across repeats — pin the change rows in Row &amp; Repeat.</p>
     <pre class="sched" id="sched"></pre>
+  </section>
+
+  <section aria-label="Copy">
     <div class="rowbtns">
-      <button class="btn primary" id="copySched" type="button">Copy schedule</button>
+      <button class="btn primary" id="copyPlan" type="button">Copy plan</button>
     </div>
   </section>
 
   <footer>
-    Yardage is apportioned from the pattern's total by each color's share of the rows —
-    no invented per-stitch constants, so give it the pattern's real total. Adjacent same-color
-    stripes merge in the schedule, including across a repeat boundary. Carry-or-cut checks the
-    longest gap between a color's uses against the <b id="ftCarry"></b>-row carry limit.
-    Plans live in this browser only (<code>localStorage</code>); the copied schedule is the
-    portable form.
+    Yards-per-row is an <b>estimate</b>: <code>stitches × (basis ÷ stitch gauge) × fabric factor</code>,
+    converted to your unit. The default factor 3.0 suits stockinette; garter and crochet run higher —
+    one measured row beats any factor, so enter it in <b>Measured yd/row</b> and it wins.
+    Skeins = <code>ceil(yards × 1.1 ÷ ball length)</code> (10% margin) when ball-band data is set.
+    Temperatures are pasted in by design — the tool never goes online.
+    Plans live in this browser only (<code>localStorage</code>); the copied plan is the portable form.
   </footer>
 </div>
 
@@ -205,27 +319,53 @@
 <script>
 "use strict";
 /* ============ CONFIG ============ */
-const CARRY_MAX = 6;       // longest gap (rows) a color can be carried up the edge
-const MAX_COLORS = 12;
-const MAX_TOTAL_ROWS = 2000;
-const DEFAULT_PALETTE = ["#f2ead8", "#8a4a45", "#33415e", "#c9a04a"];  // MC + A B C
+const CARRY_MAX = 6;         // longest gap (rows) a color can be carried up the edge
+const MIN_COLORS = 2, MAX_COLORS = 12;
+const MAX_TOTAL_ROWS = 2000; // sanity cap on stripe-mode rows
+const MAX_DAYS = 732;        // sanity cap on pasted temps (~2 years)
+const FABRIC_FACTOR = 3.0;   // default yarn-path-length ÷ stitch-width (stockinette)
+const YD_PER_M = 1.0936133;
+const DEFAULT_PALETTE = [
+  {hex:"#f2ead8",name:"MC"}, {hex:"#8a4a45",name:"A"},
+  {hex:"#33415e",name:"B"}, {hex:"#c9a04a",name:"C"}
+];
+const DEFAULT_BINS = [{upto:45,c:0},{upto:60,c:1},{upto:75,c:2},{upto:null,c:3}];
 const LS_KEY = "stripeplan.v1";
+const STASH_KEY = "skeinmath.v1";   // read-only source of ball-band presets
 
 /* ================= state ================= */
 let S = load();
 function load(){
   try{
     const raw = localStorage.getItem(LS_KEY);
-    if(raw){ const p = JSON.parse(raw); if(p && p.plans) return p; }
+    if(raw){ const p = JSON.parse(raw); if(p && p.plans){
+      for(const id in p.plans) p.plans[id] = migrate(p.plans[id]);
+      return p;
+    }}
   }catch(e){}
   const id = mkid();
   return { active:id, plans:{ [id]: mkplan("My stripes") } };
 }
 function mkid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
 function mkplan(name){
-  return { name, palette:DEFAULT_PALETTE.slice(),
-    stripes:[ {c:1,rows:6}, {c:0,rows:2}, {c:2,rows:4}, {c:0,rows:2} ],
-    repeats:4, rowG:24, totalYd:"", updated:Date.now() };
+  return { name, mode:"stripe", unit:"yd", basis:4,
+    stitches:100, stitchG:18, rowG:24, fabricFactor:FABRIC_FACTOR, measuredYpr:"",
+    palette: DEFAULT_PALETTE.map(c=>({hex:c.hex, name:c.name, g:"", len:""})),
+    stripes:[ {c:1,rows:6},{c:0,rows:2},{c:2,rows:4},{c:0,rows:2} ], repeats:4,
+    temps:[], bins: DEFAULT_BINS.map(b=>({upto:b.upto, c:b.c})),
+    updated:Date.now() };
+}
+/* migrate a v1 (or partial) plan to the v2 shape, in place, backward-compatible */
+function migrate(pl){
+  if(Array.isArray(pl.palette) && pl.palette.length && typeof pl.palette[0]==="string")
+    pl.palette = pl.palette.map((h,i)=>({hex:h, name:(i===0?"MC":String.fromCharCode(64+i)), g:"", len:""}));
+  const d = { mode:"stripe", unit:"yd", basis:4, stitches:100, stitchG:18, rowG:24,
+    fabricFactor:FABRIC_FACTOR, measuredYpr:"", stripes:[], repeats:1, temps:[],
+    bins: DEFAULT_BINS.map(b=>({upto:b.upto, c:b.c})) };
+  for(const k in d) if(pl[k]===undefined) pl[k]=d[k];
+  if(!Array.isArray(pl.palette) || pl.palette.length<2)
+    pl.palette = DEFAULT_PALETTE.map(c=>({hex:c.hex, name:c.name, g:"", len:""}));
+  return pl;
 }
 function save(){
   P().updated = Date.now();
@@ -233,14 +373,34 @@ function save(){
 }
 const $   = id => document.getElementById(id);
 const P   = () => S.plans[S.active];
-const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 const num = v => { const n=parseFloat(v); return Number.isFinite(n) ? n : null; };
 const clampi = (v,lo,hi) => Math.max(lo, Math.min(hi, Math.round(v)));
-const label = i => i===0 ? "MC" : String.fromCharCode(64+i);
 const r1 = x => Math.round(x*10)/10;
+const cname = (p,i) => (p.palette[i] && p.palette[i].name && String(p.palette[i].name).trim())
+  ? String(p.palette[i].name).trim() : (i===0?"MC":String.fromCharCode(64+i));
+const chex = (p,i) => (p.palette[i] && p.palette[i].hex) || "#cccccc";
 
-/* ================= pure plan math (testable) ================= */
-/* expand ×repeats and merge adjacent same-color blocks (incl. across boundaries) */
+/* ================= yarn-per-row (pure) ================= */
+/* dimensionally-correct: stitch width in inches × path factor, inches→display unit.
+   measured override (in the display unit) always wins. */
+function yardsPerRow(p){
+  const measured = num(p.measuredYpr);
+  if(measured!=null && measured>0) return measured;
+  const sts=num(p.stitches), stG=num(p.stitchG), ff=num(p.fabricFactor);
+  if(sts==null||sts<=0||stG==null||stG<=0||ff==null||ff<=0) return null;
+  const basisIn = p.basis===4 ? 4 : 10/2.54;      // gauge span in inches (4 in or 10 cm)
+  const stitchWidthIn = basisIn/stG;              // inches per stitch
+  const perRowYd = sts*stitchWidthIn*ff/36;       // inches of yarn ÷ 36
+  return p.unit==="m" ? perRowYd/YD_PER_M : perRowYd;
+}
+function skeinsFor(yards, ballLen){
+  const L=num(ballLen);
+  if(L==null||L<=0||yards==null||yards<=0) return null;
+  return Math.ceil(yards*1.10/L - 1e-9);   // epsilon: exact multiples must not round up
+}
+
+/* ================= stripe math (pure) ================= */
 function mergedBlocks(stripes, repeats){
   const out=[];
   for(let r=0; r<repeats; r++)
@@ -252,35 +412,21 @@ function mergedBlocks(stripes, repeats){
     }
   return out;
 }
-/* blocks -> [{c, from, to}] 1-based inclusive row ranges */
 function blockRanges(blocks){
   const out=[]; let row=1;
   for(const b of blocks){ out.push({c:b.c, from:row, to:row+b.rows-1}); row+=b.rows; }
   return out;
 }
 function totalRows(blocks){ return blocks.reduce((a,b)=>a+b.rows,0); }
-/* rows per color index */
 function perColorRows(blocks, nColors){
   const rows=new Array(nColors).fill(0);
   for(const b of blocks) if(b.c<nColors) rows[b.c]+=b.rows;
   return rows;
 }
-/* apportion total yardage by row share; largest-remainder so the sum matches */
-function apportionYd(total, rowsPer, totRows){
-  if(!total || !totRows) return rowsPer.map(()=>null);
-  const exact=rowsPer.map(r=>total*r/totRows);
-  const base=exact.map(Math.floor);
-  let left=Math.round(total)-base.reduce((a,b)=>a+b,0);
-  const order=exact.map((v,i)=>[v-base[i],i]).sort((a,b)=>b[0]-a[0]);
-  for(let k=0; k<order.length && left>0; k++,left--) base[order[k][1]]++;
-  return rowsPer.map((r,i)=>r>0?base[i]:null);
-}
-/* per color: number of use blocks, longest gap between uses, cuts needed */
 function carryAnalysis(blocks, nColors, carryMax){
   const out=[];
   for(let c=0; c<nColors; c++){
-    const uses=[];
-    let row=1;
+    const uses=[]; let row=1;
     for(const b of blocks){ if(b.c===c) uses.push({from:row, to:row+b.rows-1}); row+=b.rows; }
     if(!uses.length){ out.push(null); continue; }
     let maxGap=0, cuts=0;
@@ -294,34 +440,175 @@ function carryAnalysis(blocks, nColors, carryMax){
   }
   return out;
 }
-function scheduleText(plan){
-  const blocks=mergedBlocks(plan.stripes, plan.repeats);
-  const ranges=blockRanges(blocks);
-  const tot=totalRows(blocks);
-  const lenIn=plan.rowG>0 ? tot/plan.rowG*4 : null;
-  const head="STRIPE PLAN — "+plan.name+" — "+plan.repeats+" × "+plan.stripes.length+
-    "-stripe sequence = "+tot+" rows"+(lenIn?" ≈ "+r1(lenIn)+" in at "+plan.rowG+" rows/4in":"");
-  const lines=ranges.map(g=>"Rows "+(g.from===g.to?g.from:g.from+"–"+g.to)+": "+label(g.c));
-  return [head, ...lines].join("\n");
+/* Fibonacci widths cycling the palette: nColors colors, `terms` stripes */
+function fibFill(nColors, terms){
+  const w=[]; let a=1,b=1;
+  for(let i=0;i<terms;i++){ w.push(a); const t=a+b; a=b; b=t; }
+  return w.map((rows,i)=>({c:i%nColors, rows}));
 }
 
-/* ================= render ================= */
+/* ================= temperature math (pure) ================= */
+/* strict bare-number test avoids parsing "2026-01-01" as 2026 */
+const isNumCell = s => /^-?\d+(?:\.\d+)?$/.test(String(s).trim());
+function parseTempsText(text){
+  const lines = String(text||"").split(/\r?\n/).map(l=>l.trim()).filter(l=>l!=="");
+  if(!lines.length) return { temps:[], parsed:0, skipped:0 };
+  const delim = lines.some(l=>l.indexOf(",")>=0) ? ","
+             : lines.some(l=>l.indexOf("\t")>=0) ? "\t"
+             : lines.some(l=>l.indexOf(";")>=0) ? ";" : null;
+  if(!delim){
+    const temps=[]; let skipped=0;
+    for(const l of lines){ if(isNumCell(l)) temps.push(parseFloat(l)); else skipped++; }
+    return { temps, parsed:temps.length, skipped, col:0 };
+  }
+  const rows = lines.map(l=>l.split(delim).map(c=>c.trim()));
+  const width = Math.max.apply(null, rows.map(r=>r.length));
+  let bestCol=0, bestCount=-1;
+  for(let c=0;c<width;c++){
+    let n=0; for(const r of rows) if(c<r.length && isNumCell(r[c])) n++;
+    if(n>bestCount){ bestCount=n; bestCol=c; }
+  }
+  const temps=[]; let skipped=0;
+  for(const r of rows){
+    if(bestCol<r.length && isNumCell(r[bestCol])) temps.push(parseFloat(r[bestCol]));
+    else skipped++;
+  }
+  return { temps, parsed:temps.length, skipped, col:bestCol };
+}
+/* first bin whose upto is null (catch-all) or t < upto; -1 if none (unbinned) */
+function binIndex(t, bins){
+  for(let i=0;i<bins.length;i++){
+    const u=bins[i].upto;
+    if(u==null || t < u) return i;
+  }
+  return -1;
+}
+function binDistribution(temps, bins){
+  const per=new Array(bins.length).fill(0);
+  const unbinned=[];
+  for(const t of temps){
+    const i=binIndex(t, bins);
+    if(i<0) unbinned.push(t); else per[i]++;
+  }
+  return { per, unbinned };
+}
+/* rows per palette color from temp bins (many bins may share a color) */
+function tempColorRows(temps, bins, nColors){
+  const rows=new Array(nColors).fill(0);
+  for(const t of temps){
+    const i=binIndex(t, bins);
+    if(i>=0 && bins[i].c<nColors) rows[bins[i].c]++;
+  }
+  return rows;
+}
+
+/* ================= schedule / copy text ================= */
+function scheduleText(p){
+  const blocks=mergedBlocks(p.stripes, p.repeats);
+  const ranges=blockRanges(blocks);
+  const tot=totalRows(blocks);
+  const lenIn = p.rowG>0 ? tot/p.rowG*(p.basis===4?4:10/2.54) : null;
+  const head="STRIPE PLAN — "+p.name+" — "+p.repeats+" × "+p.stripes.length+
+    "-stripe sequence = "+tot+" rows"+(lenIn?" ≈ "+r1(lenIn)+" in":"");
+  const lines=ranges.map(g=>"Rows "+(g.from===g.to?g.from:g.from+"–"+g.to)+": "+cname(p,g.c));
+  return [head, ...lines].join("\n");
+}
+function copyPlanText(){
+  const p=P(), ypr=yardsPerRow(p), u=p.unit;
+  const key = p.palette.map((c,i)=>cname(p,i)+" = "+c.hex+(num(c.len)?" ("+r1(num(c.len))+" "+u+"/skein)":"")).join("\n");
+  if(p.mode==="stripe"){
+    const blocks=mergedBlocks(p.stripes, p.repeats), tot=totalRows(blocks);
+    const rowsPer=perColorRows(blocks, p.palette.length);
+    const lines=["COLORS:", key, "", scheduleText(p), "", "PER COLOR:"];
+    p.palette.forEach((c,i)=>{
+      if(!rowsPer[i]) return;
+      const yd = ypr!=null ? r1(rowsPer[i]*ypr) : null;
+      const sk = yd!=null ? skeinsFor(yd, c.len) : null;
+      lines.push("  "+cname(p,i)+": "+rowsPer[i]+" rows"+(yd!=null?" · ~"+yd+" "+u:"")+(sk!=null?" · "+sk+" skein"+(sk>1?"s":""):""));
+    });
+    return lines.join("\n");
+  } else {
+    const rowsPer=tempColorRows(p.temps, p.bins, p.palette.length);
+    const dist=binDistribution(p.temps, p.bins);
+    const lines=["TEMPERATURE BLANKET — "+p.name+" — "+p.temps.length+" days", "", "BINS:"];
+    p.bins.forEach((b,i)=>{
+      const lo = i===0 ? "" : (p.bins[i-1].upto+"–");
+      const rng = b.upto==null ? (i===0?"all":p.bins[i-1].upto+" and up") : (i===0?"under "+b.upto:lo+(b.upto-1));
+      lines.push("  "+rng+" → "+cname(p,b.c)+" ("+dist.per[i]+" days)");
+    });
+    if(dist.unbinned.length) lines.push("  UNBINNED: "+dist.unbinned.length+" days ("+dist.unbinned.slice(0,8).join(", ")+(dist.unbinned.length>8?"…":"")+")");
+    lines.push("", "PER COLOR:");
+    p.palette.forEach((c,i)=>{
+      if(!rowsPer[i]) return;
+      const yd = ypr!=null ? r1(rowsPer[i]*ypr) : null;
+      const sk = yd!=null ? skeinsFor(yd, c.len) : null;
+      lines.push("  "+cname(p,i)+": "+rowsPer[i]+" days"+(yd!=null?" · ~"+yd+" "+u:"")+(sk!=null?" · "+sk+" skein"+(sk>1?"s":""):""));
+    });
+    lines.push("", key);
+    return lines.join("\n");
+  }
+}
+
+/* ================= render: setup + palette ================= */
 function renderPlans(){
   const ids=Object.keys(S.plans).sort((a,b)=>S.plans[b].updated-S.plans[a].updated);
   $("planSel").innerHTML = ids.map(id=>
     '<option value="'+id+'"'+(id===S.active?" selected":"")+'>'+esc(S.plans[id].name)+'</option>').join("");
 }
-function renderPalette(){
-  $("palette").innerHTML = P().palette.map((h,i)=>
-    '<span class="sw" style="background:'+esc(h)+'"><span class="tag">'+label(i)+'</span></span>').join("");
+function renderMode(){
+  const m=P().mode;
+  document.querySelectorAll("[data-mode]").forEach(b=>b.setAttribute("aria-pressed", b.dataset.mode===m));
+  $("modeStripe").hidden = m!=="stripe";
+  $("modeTemp").hidden   = m!=="temp";
+  $("schedSec").hidden   = m!=="stripe";
+  $("tableSub").textContent = m==="stripe"
+    ? "Rows, share, estimated yards, skeins to buy, and carry-or-cut along the edge."
+    : "Days, share, estimated yards, and skeins to buy per color.";
 }
+function renderSetup(){
+  const p=P(), uName=p.basis===4?"4 in":"10 cm";
+  $("fSts").value=p.stitches; $("fStG").value=p.stitchG; $("fRowG").value=p.rowG;
+  $("fFactor").value=p.fabricFactor; $("fMeas").value=p.measuredYpr;
+  $("fStGLabel").textContent="Sts / "+uName;
+  $("fRowGLabel").textContent="Rows / "+uName;
+  $("fMeasLabel").textContent="Measured "+p.unit+"/row";
+  document.querySelectorAll("[data-basis]").forEach(b=>b.setAttribute("aria-pressed", +b.dataset.basis===p.basis));
+  document.querySelectorAll("[data-unit]").forEach(b=>b.setAttribute("aria-pressed", b.dataset.unit===p.unit));
+  const ypr=yardsPerRow(p);
+  $("yprFacts").innerHTML = ypr==null
+    ? "Enter stitches, stitch gauge, and fabric factor for a yarn estimate."
+    : "≈ <b>"+r1(ypr*100)/100+" "+p.unit+"/row</b>"+(num(p.measuredYpr)>0?" (measured)":"")+
+      " · a "+p.stitches+"-st row at "+p.stitchG+" sts/"+uName;
+}
+function stashOptions(){
+  const stash=readStash(), names=Object.keys(stash).sort((a,b)=>a.localeCompare(b));
+  return '<option value="">stash…</option>'+names.map(n=>'<option value="'+esc(n)+'">'+esc(n)+'</option>').join("");
+}
+function readStash(){
+  try{ const raw=localStorage.getItem(STASH_KEY); if(raw){ const p=JSON.parse(raw); if(p&&p.stash) return p.stash; } }catch(e){}
+  return {};
+}
+function renderPalette(){
+  const p=P(), opts=stashOptions();
+  $("paletteEd").innerHTML = p.palette.map((c,i)=>
+    '<div class="palrow" data-i="'+i+'">'+
+    '<input type="color" data-act="hex" value="'+esc(c.hex)+'" aria-label="Color '+(i+1)+'">'+
+    '<input class="pname" data-act="name" value="'+esc(c.name||"")+'" placeholder="'+(i===0?"MC":String.fromCharCode(64+i))+'" aria-label="Name">'+
+    '<span class="mini">g</span><input class="pg" data-act="g" type="number" inputmode="decimal" step="1" value="'+esc(c.g!=null?c.g:"")+'" aria-label="Ball grams">'+
+    '<span class="mini">'+p.unit+'</span><input class="pl" data-act="len" type="number" inputmode="decimal" step="1" value="'+esc(c.len!=null?c.len:"")+'" aria-label="Ball length">'+
+    '<select class="pstash" data-act="stash" aria-label="Prefill from stash">'+opts+'</select>'+
+    '<button class="mv" data-act="del" type="button" aria-label="Remove color">✕</button>'+
+    '</div>').join("");
+}
+
+/* ================= render: stripe mode ================= */
 function renderStripes(){
   const p=P();
   $("stripes").innerHTML = p.stripes.map((st,i)=>
     '<div class="strow" data-i="'+i+'">'+
     '<span class="lbl">'+(i+1)+'</span>'+
     '<select class="csel" data-act="color" aria-label="Stripe '+(i+1)+' color">'+
-      p.palette.map((h,ci)=>'<option value="'+ci+'"'+(ci===st.c?" selected":"")+'>'+label(ci)+'</option>').join("")+
+      p.palette.map((c,ci)=>'<option value="'+ci+'"'+(ci===st.c?" selected":"")+'>'+esc(cname(p,ci))+'</option>').join("")+
     '</select>'+
     '<input class="rows" data-act="rows" type="number" inputmode="numeric" min="1" max="200" step="1" value="'+st.rows+'" aria-label="Stripe '+(i+1)+' rows">'+
     '<span class="lbl">rows</span>'+
@@ -329,75 +616,150 @@ function renderStripes(){
     '<button class="mv" data-act="down" type="button" aria-label="Move down"'+(i===p.stripes.length-1?" disabled":"")+'>↓</button>'+
     '<button class="mv" data-act="del" type="button" aria-label="Delete stripe">✕</button>'+
     '</div>').join("");
-}
-function renderFields(){
-  const p=P();
-  $("fReps").value=p.repeats; $("fRowG").value=p.rowG; $("fYd").value=p.totalYd;
+  $("fReps").value=p.repeats;
 }
 function renderFacts(){
   const p=P(), blocks=mergedBlocks(p.stripes, p.repeats), tot=totalRows(blocks);
   const seqRows=totalRows(mergedBlocks(p.stripes,1));
-  const lenIn=p.rowG>0 ? tot/p.rowG*4 : null;
+  const lenIn=p.rowG>0 ? tot/p.rowG*(p.basis===4?4:10/2.54) : null;
   $("facts").innerHTML = tot===0
     ? "Add stripes to build the sequence."
     : "one repeat <b>"+seqRows+" rows</b> · total <b>"+tot+" rows</b>"+
-      (lenIn ? " ≈ <b>"+r1(lenIn)+" in</b> of fabric at "+p.rowG+" rows / 4 in" : "");
+      (lenIn ? " ≈ <b>"+r1(lenIn)+" in</b> at "+p.rowG+" rows / "+(p.basis===4?"4 in":"10 cm") : "");
 }
+
+/* ================= render: temp mode ================= */
+function renderTempFacts(){
+  const p=P();
+  $("tempFacts").innerHTML = p.temps.length
+    ? "<b>"+p.temps.length+"</b> days loaded · range <b>"+Math.min.apply(null,p.temps)+"–"+Math.max.apply(null,p.temps)+"</b>"
+    : "No temps yet — paste and parse above.";
+}
+function renderBins(){
+  const p=P();
+  $("binEd").innerHTML = p.bins.map((b,i)=>{
+    const prev = i>0 ? p.bins[i-1].upto : null;
+    const rng = b.upto==null
+      ? "<b>"+(prev!=null?prev+" and up":"all temps")+"</b>"
+      : (i===0 ? "under <b>"+b.upto+"</b>" : "<b>"+prev+"</b>–<b>"+(b.upto-1)+"</b>");
+    const maxCell = b.upto==null
+      ? '<span class="rng">'+rng+'</span>'
+      : '<span class="rng">'+rng+'</span><input class="bmax" data-act="max" type="number" inputmode="numeric" step="1" value="'+b.upto+'" aria-label="Bin '+(i+1)+' cutoff">';
+    return '<div class="binrow" data-i="'+i+'">'+maxCell+
+      '<select class="bcol" data-act="col" aria-label="Bin '+(i+1)+' color">'+
+        p.palette.map((c,ci)=>'<option value="'+ci+'"'+(ci===b.c?" selected":"")+'>'+esc(cname(p,ci))+'</option>').join("")+
+      '</select>'+
+      '<button class="mv" data-act="del" type="button" aria-label="Delete bin"'+(p.bins.length<=1?" disabled":"")+'>✕</button>'+
+      '</div>';
+  }).join("");
+  // legend
+  $("legend").innerHTML = p.bins.map((b,i)=>{
+    const prev = i>0 ? p.bins[i-1].upto : null;
+    const rng = b.upto==null ? (prev!=null?prev+"+":"all") : (i===0?"<"+b.upto:prev+"–"+(b.upto-1));
+    return '<span class="legpill"><span class="sw" style="background:'+esc(chex(p,b.c))+'"></span>'+esc(rng)+" · "+esc(cname(p,b.c))+'</span>';
+  }).join("");
+}
+function renderDist(){
+  const p=P();
+  if(!p.temps.length){ $("distFacts").textContent=""; $("binWarn").classList.remove("show"); return; }
+  const dist=binDistribution(p.temps, p.bins);
+  const w=$("binWarn");
+  if(dist.unbinned.length){
+    w.classList.add("show");
+    const uniq=[...new Set(dist.unbinned)].sort((a,b)=>a-b);
+    w.textContent="⚠ "+dist.unbinned.length+" day"+(dist.unbinned.length>1?"s":"")+" fall outside every bin: "+
+      uniq.slice(0,10).join(", ")+(uniq.length>10?" …":"")+". Extend a bin's cutoff or the open top bin catches them.";
+  } else w.classList.remove("show");
+  $("distFacts").innerHTML = "days per bin: "+p.bins.map((b,i)=>cname(p,b.c)+" <b>"+dist.per[i]+"</b>").join(" · ");
+}
+
+/* ================= preview ================= */
 function renderPreview(){
-  const p=P(), blocks=mergedBlocks(p.stripes, p.repeats), tot=totalRows(blocks);
-  const svg=$("preview");
+  const p=P(), svg=$("preview");
+  let blocks, tot;
+  if(p.mode==="stripe"){ blocks=mergedBlocks(p.stripes, p.repeats); tot=totalRows(blocks); }
+  else {
+    // one row per day, merged into consecutive same-color runs for drawing
+    blocks=[]; for(const t of p.temps){ const bi=binIndex(t,p.bins); const c=bi>=0?p.bins[bi].c:-1;
+      if(blocks.length && blocks[blocks.length-1].c===c) blocks[blocks.length-1].rows++; else blocks.push({c,rows:1}); }
+    tot=p.temps.length;
+  }
   if(!tot){ svg.setAttribute("viewBox","0 0 700 60"); svg.innerHTML=
-    '<text x="350" y="34" fill="#999" font-size="14" text-anchor="middle" font-family="system-ui">No stripes yet.</text>'; return; }
-  const W=700, rowPx=Math.max(2, Math.min(14, Math.floor(760/tot)));
-  const H=tot*rowPx+8;
+    '<text x="350" y="34" fill="#999" font-size="14" text-anchor="middle" font-family="system-ui">'+
+    (p.mode==="temp"?"Paste temperatures to preview.":"No stripes yet.")+'</text>'; return; }
+  const W=700, rowPx=Math.max(1.4, Math.min(14, 760/tot));
   const el=[]; let y=4;
   for(const b of blocks){
-    el.push('<rect x="30" y="'+y+'" width="'+(W-70)+'" height="'+(b.rows*rowPx)+
-      '" fill="'+esc(p.palette[b.c]||"#ccc")+'"/>');
+    const col = b.c<0 ? "#e6e0d2" : esc(chex(p,b.c));
+    el.push('<rect x="30" y="'+r1(y)+'" width="'+(W-70)+'" height="'+r1(b.rows*rowPx)+'" fill="'+col+'"/>');
     y+=b.rows*rowPx;
   }
-  // repeat boundaries + row labels
-  const seqRows=totalRows(mergedBlocks(p.stripes,1));
-  for(let r=1; r<p.repeats; r++){
-    const by=4+seqRows*r*rowPx;
-    el.push('<line x1="26" y1="'+by+'" x2="'+(W-36)+'" y2="'+by+
-      '" stroke="#3a3028" stroke-width="1.2" stroke-dasharray="6 4"/>');
-    el.push('<text x="'+(W-32)+'" y="'+(by+4)+'" fill="#7d7062" font-size="11" font-family="ui-monospace,monospace">'+(seqRows*r+1)+'</text>');
+  if(p.mode==="stripe"){
+    const seqRows=totalRows(mergedBlocks(p.stripes,1));
+    for(let r=1;r<p.repeats;r++){
+      const by=4+seqRows*r*rowPx;
+      el.push('<line x1="26" y1="'+r1(by)+'" x2="'+(W-36)+'" y2="'+r1(by)+'" stroke="#3a3028" stroke-width="1.2" stroke-dasharray="6 4"/>');
+    }
   }
-  el.push('<text x="'+(W-32)+'" y="12" fill="#7d7062" font-size="11" font-family="ui-monospace,monospace">1</text>');
-  el.push('<rect x="30" y="4" width="'+(W-70)+'" height="'+(tot*rowPx)+'" fill="none" stroke="#3a3028" stroke-width="1"/>');
-  svg.setAttribute("viewBox","0 0 "+W+" "+(H+4));
+  el.push('<rect x="30" y="4" width="'+(W-70)+'" height="'+r1(tot*rowPx)+'" fill="none" stroke="#3a3028" stroke-width="1"/>');
+  svg.setAttribute("viewBox","0 0 "+W+" "+r1(tot*rowPx+8));
   svg.innerHTML=el.join("");
 }
+
+/* ================= per-color table ================= */
 function renderTable(){
-  const p=P(), blocks=mergedBlocks(p.stripes, p.repeats), tot=totalRows(blocks);
-  if(!tot){ $("colorTable").innerHTML='<div class="note">Add stripes first.</div>'; return; }
-  const rowsPer=perColorRows(blocks, p.palette.length);
-  const yd=apportionYd(num(p.totalYd), rowsPer, tot);
-  const carry=carryAnalysis(blocks, p.palette.length, CARRY_MAX);
-  const rows=p.palette.map((h,i)=>{
+  const p=P(), ypr=yardsPerRow(p), u=p.unit;
+  let rowsPer, tot, isStripe = p.mode==="stripe", carry=null;
+  if(isStripe){
+    const blocks=mergedBlocks(p.stripes, p.repeats); tot=totalRows(blocks);
+    rowsPer=perColorRows(blocks, p.palette.length);
+    carry=carryAnalysis(blocks, p.palette.length, CARRY_MAX);
+  } else {
+    tot=p.temps.length; rowsPer=tempColorRows(p.temps, p.bins, p.palette.length);
+  }
+  if(!tot){ $("colorTable").innerHTML='<div class="note">'+(isStripe?"Add stripes first.":"Parse temps first.")+'</div>';
+    $("tableNote").textContent=""; return; }
+  const unitCol = isStripe ? "Rows" : "Days";
+  const head='<tr><th>Color</th><th>'+unitCol+'</th><th>Share</th><th>Yards</th><th>Skeins</th>'+(isStripe?'<th>Edge</th>':'')+'</tr>';
+  const body=p.palette.map((c,i)=>{
     if(!rowsPer[i]) return "";
-    const ca=carry[i];
-    return '<tr><td><span class="chip" style="background:'+esc(h)+'"></span><b>'+label(i)+'</b></td>'+
+    const yd = ypr!=null ? r1(rowsPer[i]*ypr) : null;
+    const sk = yd!=null ? skeinsFor(yd, c.len) : null;
+    const ca = carry ? carry[i] : null;
+    return '<tr><td><span class="chip" style="background:'+esc(c.hex)+'"></span><b>'+esc(cname(p,i))+'</b></td>'+
       '<td class="n">'+rowsPer[i]+'</td>'+
       '<td class="n">'+Math.round(rowsPer[i]/tot*100)+'%</td>'+
-      '<td class="n">'+(yd[i]!=null?yd[i]+" yd":"—")+'</td>'+
-      '<td class="n">'+(ca ? '<span class="'+(ca.verdict.indexOf("cut")===0?"cut":"carry")+'">'+esc(ca.verdict)+'</span>'+
-        (ca.blocks>1 ? ' <span style="color:var(--faint)">(max gap '+ca.maxGap+')</span>' : "") : "—")+'</td></tr>';
+      '<td class="n">'+(yd!=null?yd+" "+u:"—")+'</td>'+
+      '<td class="n">'+(sk!=null?sk:(yd!=null?'<span style="color:var(--faint)">set band</span>':"—"))+'</td>'+
+      (isStripe?'<td class="n">'+(ca?'<span class="'+(ca.verdict.indexOf("cut")===0?"cut":"carry")+'">'+esc(ca.verdict)+'</span>'+
+        (ca.blocks>1?' <span style="color:var(--faint)">(gap '+ca.maxGap+')</span>':""):"—")+'</td>':'')+'</tr>';
   }).join("");
-  $("colorTable").innerHTML='<table><thead><tr><th>Color</th><th>Rows</th><th>Share</th><th>Yardage</th><th>Edge</th></tr></thead>'+
-    '<tbody>'+rows+'</tbody></table>';
+  $("colorTable").innerHTML='<table><thead>'+head+'</thead><tbody>'+body+'</tbody></table>';
+  $("tableNote").textContent = ypr==null
+    ? "Set stitches + gauge above for yards; add ball-band grams & length for skeins."
+    : (p.palette.some((c,i)=>rowsPer[i] && num(c.len)==null)
+        ? "Skeins shown only where a ball length is set — fill the rest in the palette."
+        : "");
 }
-function renderSched(){ $("sched").textContent = scheduleText(P()); }
+
+/* ================= refresh ================= */
+function renderSched(){ $("sched").textContent = P().mode==="stripe" ? scheduleText(P()) : ""; }
+function refresh(){
+  renderSetup();
+  if(P().mode==="stripe"){ renderFacts(); }
+  else { renderTempFacts(); renderBins(); renderDist(); }
+  renderPreview(); renderTable(); renderSched();
+}
 function renderAll(){
-  renderPlans(); renderPalette(); renderStripes(); renderFields();
+  renderPlans(); renderMode(); renderPalette();
+  renderStripes(); renderTempInput();
   refresh();
 }
-function refresh(){ renderFacts(); renderPreview(); renderTable(); renderSched(); }
+function renderTempInput(){ $("tempsIn").value = P().temps.length ? P().temps.join("\n") : $("tempsIn").value; }
 
 /* ================= toast / copy ================= */
 function toast(m){ const t=$("toast"); t.textContent=m; t.classList.add("show");
-  clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove("show"),1900); }
+  clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove("show"),2000); }
 function copyText(text, ok){
   const done=s=>toast(s?ok:"Copy failed — long-press to select");
   if(navigator.clipboard && navigator.clipboard.writeText)
@@ -407,43 +769,94 @@ function copyText(text, ok){
     ta.style.opacity="0";document.body.appendChild(ta);ta.select();let o=false;
     try{o=document.execCommand("copy");}catch(e){}document.body.removeChild(ta);done(o);}
 }
-$("copySched").addEventListener("click", ()=>{
+$("copyPlan").addEventListener("click", ()=>copyText(copyPlanText(), "Plan copied"));
+
+/* ================= events: mode + setup ================= */
+document.querySelectorAll("[data-mode]").forEach(b=>b.addEventListener("click", ()=>{
+  P().mode=b.dataset.mode; save(); renderAll();
+}));
+document.querySelectorAll("[data-basis]").forEach(b=>b.addEventListener("click", ()=>{
+  P().basis=+b.dataset.basis; save(); refresh();
+}));
+document.querySelectorAll("[data-unit]").forEach(b=>b.addEventListener("click", ()=>{
+  const to=b.dataset.unit, p=P();
+  if(to===p.unit) return;
+  const conv = v => { const n=num(v); return n==null?v:String(r1(to==="m"?n/YD_PER_M:n*YD_PER_M)); };
+  p.measuredYpr = conv(p.measuredYpr);
+  p.palette.forEach(c=>{ if(num(c.len)!=null) c.len=conv(c.len); });
+  p.unit=to; save(); renderPalette(); refresh();
+}));
+$("fSts").addEventListener("input", ()=>{ const v=num($("fSts").value); if(v!=null&&v>0){P().stitches=v;save();refresh();} });
+$("fStG").addEventListener("input", ()=>{ const v=num($("fStG").value); if(v!=null&&v>0){P().stitchG=v;save();refresh();} });
+$("fRowG").addEventListener("input", ()=>{ const v=num($("fRowG").value); if(v!=null&&v>0){P().rowG=v;save();refresh();} });
+$("fFactor").addEventListener("input", ()=>{ const v=num($("fFactor").value); if(v!=null&&v>0){P().fabricFactor=v;save();refresh();} });
+$("fMeas").addEventListener("input", ()=>{ P().measuredYpr=$("fMeas").value; save(); refresh(); });
+
+/* ================= events: palette ================= */
+$("paletteEd").addEventListener("input", e=>{
+  const row=e.target.closest(".palrow"); if(!row) return;
+  const i=+row.dataset.i, p=P(), act=e.target.dataset.act;
+  if(act==="hex"){ p.palette[i].hex=e.target.value; save(); softRefreshColor(); }
+  else if(act==="name"){ p.palette[i].name=e.target.value; save(); softRefreshName(); }
+  else if(act==="g"){ p.palette[i].g=e.target.value; save(); renderTable(); }
+  else if(act==="len"){ p.palette[i].len=e.target.value; save(); renderTable(); }
+});
+$("paletteEd").addEventListener("change", e=>{
+  const row=e.target.closest(".palrow"); if(!row) return;
+  const i=+row.dataset.i, p=P();
+  if(e.target.dataset.act==="stash"){
+    const y=readStash()[e.target.value]; if(!y) return;
+    const len = y.unit===p.unit ? y.len : (p.unit==="m"?y.len/YD_PER_M:y.len*YD_PER_M);
+    p.palette[i].g=String(r1(y.g)); p.palette[i].len=String(r1(len));
+    save(); renderPalette(); renderTable(); toast("Filled "+cname(p,i)+" from stash");
+  }
+});
+$("paletteEd").addEventListener("click", e=>{
+  const b=e.target.closest("button.mv"); if(!b) return;
+  const p=P(), i=+e.target.closest(".palrow").dataset.i;
+  if(p.palette.length<=MIN_COLORS){ toast("Keep at least "+MIN_COLORS+" colors"); return; }
+  if(p.stripes.some(st=>st.c===i) || p.bins.some(bn=>bn.c===i)){
+    if(!confirm(cname(p,i)+" is used — its stripes/bins shift to the first color. Remove?")) return;
+  }
+  p.palette.splice(i,1);
+  const fix = c => c>i ? c-1 : (c===i ? 0 : c);
+  p.stripes.forEach(st=>st.c=fix(st.c));
+  p.bins.forEach(bn=>bn.c=fix(bn.c));
+  save(); renderPalette(); renderStripes(); renderBins(); refresh();
+});
+function softRefreshColor(){ renderPreview(); renderTable(); if(P().mode==="temp") renderBins(); }
+function softRefreshName(){ renderStripes(); renderTable(); renderSched(); if(P().mode==="temp") renderBins(); }
+$("addColor").addEventListener("click", ()=>{
   const p=P();
-  const key=p.palette.map((h,i)=>label(i)+" = "+h).join("  ");
-  copyText(scheduleText(p)+"\n"+key, "Schedule copied");
+  if(p.palette.length>=MAX_COLORS){ toast("Palette is full ("+MAX_COLORS+")"); return; }
+  const i=p.palette.length;
+  p.palette.push({hex:"#8fa8dc", name:String.fromCharCode(64+i), g:"", len:""});
+  save(); renderPalette(); renderStripes(); if(p.mode==="temp") renderBins();
 });
 
-/* ================= stripe events ================= */
+/* ================= events: stripe sequence ================= */
 function guardTotal(p){
-  const tot=totalRows(mergedBlocks(p.stripes, p.repeats));
-  if(tot>MAX_TOTAL_ROWS){ toast("Over "+MAX_TOTAL_ROWS+" total rows — trim the plan"); return false; }
+  if(totalRows(mergedBlocks(p.stripes, p.repeats))>MAX_TOTAL_ROWS){
+    toast("Over "+MAX_TOTAL_ROWS+" total rows — trim the plan"); return false; }
   return true;
 }
 $("stripes").addEventListener("input", e=>{
-  const rowEl=e.target.closest(".strow"); if(!rowEl) return;
-  const i=+rowEl.dataset.i, p=P(), act=e.target.dataset.act;
-  if(act==="rows"){
-    const old=p.stripes[i].rows;
-    p.stripes[i].rows=clampi(num(e.target.value)||1, 1, 200);
-    if(!guardTotal(p)){ p.stripes[i].rows=old; e.target.value=old; return; }
-    save(); refresh();
-  }
+  const row=e.target.closest(".strow"); if(!row||e.target.dataset.act!=="rows") return;
+  const i=+row.dataset.i, p=P(), old=p.stripes[i].rows;
+  p.stripes[i].rows=clampi(num(e.target.value)||1,1,200);
+  if(!guardTotal(p)){ p.stripes[i].rows=old; e.target.value=old; return; }
+  save(); refresh();
 });
 $("stripes").addEventListener("change", e=>{
-  const rowEl=e.target.closest(".strow"); if(!rowEl) return;
-  const i=+rowEl.dataset.i, p=P();
-  if(e.target.dataset.act==="color"){
-    p.stripes[i].c=+e.target.value;
-    save(); renderStripes(); refresh();
-  }
+  const row=e.target.closest(".strow"); if(!row||e.target.dataset.act!=="color") return;
+  P().stripes[+row.dataset.i].c=+e.target.value; save(); renderStripes(); refresh();
 });
 $("stripes").addEventListener("click", e=>{
   const b=e.target.closest("button.mv"); if(!b) return;
-  const rowEl=e.target.closest(".strow"), i=+rowEl.dataset.i, p=P();
-  const act=b.dataset.act;
-  if(act==="del"){ p.stripes.splice(i,1); }
-  else if(act==="up" && i>0){ const t=p.stripes[i-1]; p.stripes[i-1]=p.stripes[i]; p.stripes[i]=t; }
-  else if(act==="down" && i<p.stripes.length-1){ const t=p.stripes[i+1]; p.stripes[i+1]=p.stripes[i]; p.stripes[i]=t; }
+  const p=P(), i=+e.target.closest(".strow").dataset.i, act=b.dataset.act;
+  if(act==="del") p.stripes.splice(i,1);
+  else if(act==="up"&&i>0){ const t=p.stripes[i-1];p.stripes[i-1]=p.stripes[i];p.stripes[i]=t; }
+  else if(act==="down"&&i<p.stripes.length-1){ const t=p.stripes[i+1];p.stripes[i+1]=p.stripes[i];p.stripes[i]=t; }
   else return;
   save(); renderStripes(); refresh();
 });
@@ -455,74 +868,109 @@ $("addStripe").addEventListener("click", ()=>{
   if(!guardTotal(p)){ p.stripes.pop(); return; }
   save(); renderStripes(); refresh();
 });
-
-/* ================= palette events ================= */
-$("addColor").addEventListener("click", ()=>{
-  if(P().palette.length>=MAX_COLORS){ toast("Palette is full ("+MAX_COLORS+")"); return; }
-  $("colorIn").click();
-});
-$("colorIn").addEventListener("input", ()=>{
+$("fibFill").addEventListener("click", ()=>{
   const p=P();
-  if(p.palette.length>=MAX_COLORS) return;
-  p.palette.push($("colorIn").value);
-  save(); renderPalette(); renderStripes(); refresh();
-  toast("Added "+label(p.palette.length-1));
+  const terms=Math.min(2*p.palette.length, 10);
+  const cand=fibFill(p.palette.length, terms);
+  const old=p.stripes;
+  p.stripes=cand;
+  if(!guardTotal(p)){ p.stripes=old; toast("Fibonacci fill would exceed "+MAX_TOTAL_ROWS+" rows — lower repeats"); return; }
+  save(); renderStripes(); refresh(); toast("Filled "+terms+" Fibonacci stripes");
 });
-$("delColor").addEventListener("click", ()=>{
-  const p=P(), i=p.palette.length-1;
-  if(i===0){ toast("MC stays"); return; }
-  if(p.stripes.some(st=>st.c===i)){
-    if(!confirm(label(i)+" is used in the sequence — its stripes become MC. Remove?")) return;
-    p.stripes.forEach(st=>{ if(st.c===i) st.c=0; });
-  }
-  p.palette.pop();
-  save(); renderPalette(); renderStripes(); refresh();
-});
-
-/* ================= fields ================= */
 $("fReps").addEventListener("input", ()=>{
-  const p=P(), v=clampi(num($("fReps").value)||1, 1, 99);
-  const old=p.repeats; p.repeats=v;
+  const p=P(), old=p.repeats;
+  p.repeats=clampi(num($("fReps").value)||1,1,99);
   if(!guardTotal(p)){ p.repeats=old; $("fReps").value=old; return; }
   save(); refresh();
 });
-$("fRowG").addEventListener("input", ()=>{
-  const v=num($("fRowG").value);
-  if(v!=null && v>0){ P().rowG=v; save(); refresh(); }
+$("fToN").addEventListener("input", ()=>{
+  const p=P(), target=num($("fToN").value);
+  if(target==null||target<=0) return;
+  const seq=totalRows(mergedBlocks(p.stripes,1));
+  if(seq<=0) return;
+  const reps=clampi(target/seq,1,99);
+  const old=p.repeats; p.repeats=reps;
+  if(!guardTotal(p)){ p.repeats=old; return; }
+  save(); $("fReps").value=reps; refresh();
 });
-$("fYd").addEventListener("input", ()=>{
-  P().totalYd=$("fYd").value; save(); renderTable();
+
+/* ================= events: temperatures ================= */
+$("parseTemps").addEventListener("click", ()=>{
+  const res=parseTempsText($("tempsIn").value);
+  if(!res.temps.length){ toast("No numbers found — one per line or a CSV column"); return; }
+  if(res.temps.length>MAX_DAYS){ toast("That's over "+MAX_DAYS+" days — trim the paste"); return; }
+  P().temps=res.temps; save();
+  renderTempFacts(); renderDist(); renderPreview(); renderTable();
+  toast("Parsed "+res.parsed+" day"+(res.parsed>1?"s":"")+(res.skipped?" · skipped "+res.skipped+" line"+(res.skipped>1?"s":""):""));
 });
+$("clearTemps").addEventListener("click", ()=>{
+  if(!P().temps.length && !$("tempsIn").value){ return; }
+  if(!confirm("Clear the pasted temperatures?")) return;
+  P().temps=[]; $("tempsIn").value=""; save();
+  renderTempFacts(); renderDist(); renderPreview(); renderTable();
+});
+$("binEd").addEventListener("input", e=>{
+  const row=e.target.closest(".binrow"); if(!row||e.target.dataset.act!=="max") return;
+  const i=+row.dataset.i, v=num(e.target.value);
+  if(v!=null) P().bins[i].upto=v;
+  save(); renderDist(); renderPreview(); renderTable(); renderLegendOnly();
+});
+$("binEd").addEventListener("change", e=>{
+  const row=e.target.closest(".binrow"); if(!row) return;
+  const i=+row.dataset.i;
+  if(e.target.dataset.act==="col"){ P().bins[i].c=+e.target.value; save(); renderBins(); renderDist(); renderPreview(); renderTable(); }
+  else if(e.target.dataset.act==="max"){ sortBins(); renderBins(); renderDist(); renderPreview(); renderTable(); }
+});
+$("binEd").addEventListener("click", e=>{
+  const b=e.target.closest("button.mv"); if(!b) return;
+  const p=P(), i=+e.target.closest(".binrow").dataset.i;
+  if(p.bins.length<=1) return;
+  p.bins.splice(i,1);
+  if(!p.bins.some(bn=>bn.upto==null)) p.bins[p.bins.length-1].upto=null;  // keep an open top
+  save(); renderBins(); renderDist(); renderPreview(); renderTable();
+});
+$("addBin").addEventListener("click", ()=>{
+  const p=P();
+  if(p.bins.length>=MAX_COLORS){ toast("That's plenty of bins"); return; }
+  const finite=p.bins.filter(b=>b.upto!=null).map(b=>b.upto);
+  const nextMax = finite.length ? Math.max.apply(null,finite)+10 : 50;
+  // insert a new finite bin just before the open-top one
+  const openIdx=p.bins.findIndex(b=>b.upto==null);
+  const bin={upto:nextMax, c:Math.min(p.bins.length,p.palette.length-1)};
+  if(openIdx>=0) p.bins.splice(openIdx,0,bin); else { p.bins.push(bin); p.bins.push({upto:null,c:0}); }
+  sortBins(); save(); renderBins(); renderDist(); renderPreview(); renderTable();
+});
+function sortBins(){
+  const p=P();
+  p.bins.sort((a,b)=>{ if(a.upto==null) return 1; if(b.upto==null) return -1; return a.upto-b.upto; });
+}
+function renderLegendOnly(){ /* legend depends on maxes; rebuilt fully in renderBins on change */ }
 
 /* ================= plan management ================= */
 $("planSel").addEventListener("change", e=>{
   S.active=e.target.value;
   try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(err){}
+  $("tempsIn").value = P().temps.length ? P().temps.join("\n") : "";
   renderAll();
 });
 $("planNew").addEventListener("click", ()=>{
-  const name=prompt("Name the plan:");
-  if(!name || !name.trim()) return;
-  const id=mkid();
-  S.plans[id]=mkplan(name.trim());
-  S.active=id;
-  save(); renderAll();
+  const name=prompt("Name the plan:"); if(!name||!name.trim()) return;
+  const id=mkid(); S.plans[id]=mkplan(name.trim()); S.active=id;
+  $("tempsIn").value=""; save(); renderAll();
 });
 $("planRen").addEventListener("click", ()=>{
-  const name=prompt("Rename plan:", P().name);
-  if(!name || !name.trim()) return;
+  const name=prompt("Rename plan:", P().name); if(!name||!name.trim()) return;
   P().name=name.trim(); save(); renderPlans(); renderSched();
 });
 $("planDel").addEventListener("click", ()=>{
   if(Object.keys(S.plans).length<2){ toast("Can't delete the only plan"); return; }
   if(!confirm('Delete "'+P().name+'"? This can\'t be undone.')) return;
-  delete S.plans[S.active];
-  S.active=Object.keys(S.plans)[0];
+  delete S.plans[S.active]; S.active=Object.keys(S.plans)[0];
+  $("tempsIn").value = P().temps.length ? P().temps.join("\n") : "";
   save(); renderAll();
 });
 
 /* ================= init ================= */
-$("ftCarry").textContent=CARRY_MAX;
 renderAll();
 </script>
 </body>
