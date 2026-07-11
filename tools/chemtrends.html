@@ -1,12 +1,16 @@
 <!DOCTYPE html>
 <!--
   CHEM TRENDS — Chemistry Trend Dashboard
-  v1.0.0 · 2026-07-09
+  v1.1.0 · 2026-07-10
   Aquatics suite, companion to pumproom.html / readingqueue.html / chemstock.html.
   Single-file, offline, zero dependencies.
   Renders per-pool time-series of FC, pH, temp, and flow from Reading Queue's
   logged readings (read-only) plus CSV imports of the queue's own export format,
   with compliance bands so excursions and slow drift are visible.
+  v1.1.0 adds a saturation-index (LSI) trend: when a reading also carries
+  alkalinity / calcium hardness / CYA (Reading Queue v1.1.0+), the index is
+  computed with pumproom.html's calcLSI() ported VERBATIM — a runtime parity
+  test holds the two identical.
   Reads readingqueue.v1 READ-ONLY; imported CSV rows persist in chemtrends.v1.
 -->
 <html lang="en">
@@ -94,7 +98,7 @@
 
   <header>
     <h1><span class="tick">▮</span> Chem Trends</h1>
-    <span class="ver">trend dashboard · v1.0.0 · offline</span>
+    <span class="ver">trend dashboard · v1.1.0 · offline</span>
   </header>
 
   <section aria-label="Body of water">
@@ -133,11 +137,13 @@
     Live points come from this device's <b>Reading Queue</b> log (read-only — nothing here
     modifies the queue). CSV imports use the queue's own export format and persist in
     <code>chemtrends.v1</code>, so history survives the queue's "clear entered".
-    Shaded bands are the compliance ranges (FC: body minimum to 10 ppm; pH: 7.2–8.0);
-    red dots are out-of-band readings. Lines break across gaps longer than 3 days rather
-    than inventing a trend. The queue logs FC/pH/temp/flow only, so <b>LSI trends are not
-    computable</b> from this data. <code>localStorage</code> is per-device — this dashboard
-    shows <i>this device's</i> logging history; the CSV import is the merge path across devices.
+    Shaded bands are the compliance ranges (FC: body minimum to 10 ppm; pH: 7.2–8.0;
+    LSI: −0.3 to +0.3); red dots are out-of-band readings. Lines break across gaps longer
+    than 3 days rather than inventing a trend. When a reading also logs alkalinity, calcium
+    hardness, and CYA (Reading Queue v1.1.0+), the <b>saturation index (LSI)</b> is charted
+    too, using Pump Room's exact formula. <code>localStorage</code> is per-device — this
+    dashboard shows <i>this device's</i> logging history; the CSV import is the merge path
+    across devices.
   </footer>
 </div>
 
@@ -157,10 +163,34 @@ const GAP_DAYS = 3;                    // polyline breaks across gaps longer tha
 const QUEUE_KEY = "readingqueue.v1";   // source log (read-only)
 const LS_KEY    = "chemtrends.v1";
 const DAY = 864e5;
+const LSI_BAND = [-0.3, 0.3];          // balanced saturation window
+
+/* ============ PORTED VERBATIM from pumproom.html — do not edit ============ */
+const TF_TABLE = [[32,0],[37,.1],[46,.2],[53,.3],[60,.4],[66,.5],[76,.6],[84,.7],[94,.8],[105,.9]];
+function tempFactor(t){
+  if(t<=32) return 0;
+  if(t>=105) return .9;
+  for(let i=0;i<TF_TABLE.length-1;i++){
+    const [a,fa]=TF_TABLE[i], [b,fb]=TF_TABLE[i+1];
+    if(t>=a && t<=b) return fa+(fb-fa)*(t-a)/(b-a);
+  }
+  return .9;
+}
+function calcLSI(r){
+  if(r.ph==null || r.temp==null || r.ch==null || r.ta==null) return null;
+  if(r.ch<=0 || r.ta<=0) return null;
+  const adjTA = Math.max(1, r.ta - (r.cya??0)/3);   // carbonate correction for CYA
+  const cf = Math.log10(r.ch) - 0.4;
+  const af = Math.log10(adjTA);
+  return r.ph + tempFactor(r.temp) + cf + af - 12.1; // TDS < 1000 assumed
+}
+/* ============ end verbatim port ============ */
+
 const METRICS = [
   { key:"fc",   label:"Free Chlorine (ppm)", band:p=>[p.minFC, MAX_FC] },
   { key:"ph",   label:"pH",                  band:()=>[PH_LO, PH_HI]   },
   { key:"temp", label:"Temperature (°F)",    band:()=>null             },
+  { key:"lsi",  label:"Saturation Index (LSI)", band:()=>LSI_BAND, compute:r=>calcLSI(r) },
   { key:"flow", label:"Flow (GPM)",          band:()=>null             },
 ];
 
@@ -201,7 +231,8 @@ function readQueue(){
       const t = effectiveMs(r.iso, r.time);
       if(t==null || !POOLS.some(x=>x.id===r.poolId)) continue;
       out.push({ poolId:r.poolId, t,
-        fc:num(r.fc), ph:num(r.ph), temp:num(r.temp), flow:num(r.flow), src:"queue" });
+        fc:num(r.fc), ph:num(r.ph), temp:num(r.temp),
+        ta:num(r.ta), ch:num(r.ch), cya:num(r.cya), flow:num(r.flow), src:"queue" });
     }
     return out;
   }catch(e){ return []; }
@@ -244,7 +275,9 @@ function msFrom(dateStr, timeStr){
   if(yearless && dt.getTime() > Date.now()+DAY) dt=new Date(y-1, m-1, d, +tm[1], +tm[2]);
   return dt.getTime();
 }
-/* header: date,time,pool,free_cl_ppm,ph,temp_f,flow_gpm,initials,violation,entered */
+/* header (v1.1.0): date,time,pool,free_cl_ppm,ph,temp_f,alkalinity_ppm,calcium_ppm,
+   cya_ppm,flow_gpm,initials,violation,entered — read by NAME, so older/newer
+   column sets both import; the chemistry columns are optional. */
 function parseCSV(text){
   text = String(text||"").replace(/^﻿/,"");
   const lines = text.split(/\r?\n/).filter(l=>l.trim()!=="");
@@ -252,7 +285,8 @@ function parseCSV(text){
   const head = splitCSVLine(lines[0]).map(h=>h.trim().toLowerCase());
   const idx = n => head.indexOf(n);
   const iD=idx("date"), iT=idx("time"), iP=idx("pool"),
-        iFC=idx("free_cl_ppm"), iPH=idx("ph"), iTe=idx("temp_f"), iFl=idx("flow_gpm");
+        iFC=idx("free_cl_ppm"), iPH=idx("ph"), iTe=idx("temp_f"),
+        iTA=idx("alkalinity_ppm"), iCH=idx("calcium_ppm"), iCY=idx("cya_ppm"), iFl=idx("flow_gpm");
   if(iD<0 || iT<0 || iP<0)
     return { rows:[], skipped:lines.length-1, error:"header must include date, time, pool" };
   const rows=[]; let skipped=0;
@@ -262,8 +296,9 @@ function parseCSV(text){
     const t = msFrom(c[iD], c[iT]);
     if(!poolId || t==null){ skipped++; continue; }
     const g = i => i>=0 && i<c.length ? num(c[i]) : null;
-    const r = { poolId, t, fc:g(iFC), ph:g(iPH), temp:g(iTe), flow:g(iFl), src:"import" };
-    if(r.fc==null && r.ph==null && r.temp==null && r.flow==null){ skipped++; continue; }
+    const r = { poolId, t, fc:g(iFC), ph:g(iPH), temp:g(iTe),
+                ta:g(iTA), ch:g(iCH), cya:g(iCY), flow:g(iFl), src:"import" };
+    if(r.fc==null && r.ph==null && r.temp==null && r.ta==null && r.ch==null && r.cya==null && r.flow==null){ skipped++; continue; }
     rows.push(r);
   }
   return { rows, skipped };
@@ -285,7 +320,8 @@ function mergeReadings(queueRows, importedRows){
 }
 function importedAsRows(){
   return S.imported
-    .map(r=>({ poolId:r.poolId, t:+r.t, fc:num(r.fc), ph:num(r.ph), temp:num(r.temp), flow:num(r.flow), src:"import" }))
+    .map(r=>({ poolId:r.poolId, t:+r.t, fc:num(r.fc), ph:num(r.ph), temp:num(r.temp),
+               ta:num(r.ta), ch:num(r.ch), cya:num(r.cya), flow:num(r.flow), src:"import" }))
     .filter(r=>Number.isFinite(r.t));
 }
 function currentData(){
@@ -338,7 +374,9 @@ function fmtDay(ms){ const d=new Date(ms); return (d.getMonth()+1)+"/"+d.getDate
 
 function chartSVG(metric, rows){
   const p = pool(), band = metric.band(p);
-  const pts = rows.filter(r=>r[metric.key]!=null).map(r=>({t:r.t, v:r[metric.key]}));
+  const valOf = r => metric.compute ? metric.compute(r) : r[metric.key];
+  const pts = [];
+  for(const r of rows){ const v = valOf(r); if(v!=null) pts.push({t:r.t, v}); }
   if(!pts.length) return { svg:null, stat:"no data" };
 
   // domains
@@ -466,7 +504,8 @@ $("fileIn").addEventListener("change", ()=>{
     for(const r of res.rows){
       if(have.has(keyOf(r))) continue;
       have.add(keyOf(r));
-      S.imported.push({ poolId:r.poolId, t:r.t, fc:r.fc, ph:r.ph, temp:r.temp, flow:r.flow });
+      S.imported.push({ poolId:r.poolId, t:r.t, fc:r.fc, ph:r.ph, temp:r.temp,
+        ta:r.ta, ch:r.ch, cya:r.cya, flow:r.flow });
       added++;
     }
     save(); renderCharts();

@@ -61,11 +61,16 @@
         <li>Clearing all readings is guarded by a confirmation prompt, but there is no undo. Export before a bulk clear if the record matters.</li>
       </ul>
 
+      <h2>Update: alkalinity, calcium &amp; CYA capture (v1.1.0)</h2>
+      <p>Version 1.1.0 adds three optional fields to the capture form — alkalinity, calcium hardness, and cyanuric acid — alongside the existing FC, pH, temperature, and flow. They are the inputs the Langelier saturation index needs beyond pH and temperature, so a reading that includes them lets <strong>Chem Trends</strong> plot an LSI trend line [3] rather than only point-in-time numbers.</p>
+      <p>Everything stays backward-compatible. The new fields are optional — a quick FC/pH check logs and exports exactly as before, and rows saved or exported under v1.0.0 (which lack the three columns) load and re-import cleanly. The CSV gains three columns — <code>alkalinity_ppm</code>, <code>calcium_ppm</code>, <code>cya_ppm</code> — and Chem Trends reads the CSV by column name, so old and new exports both import. The fields live in the <code>FIELDS</code> array at the top of the script, the same place the rest of the capture form is defined.</p>
+
       <section>
         <h2>References</h2>
         <ol>
           <li><a href="../../tools/readingqueue.html">Reading Queue</a></li>
           <li><a href="../../tools/pumproom.html">Pump Room Chemistry Calculator</a> — the dosing companion that shares the same pool list and thresholds.</li>
+          <li><a href="../../tools/chemtrends.html">Chem Trends Dashboard</a> — plots the saturation-index trend from the new fields.</li>
         </ol>
       </section>
     </article>

@@ -49,18 +49,31 @@
 
       <h2>Limitations</h2>
       <ul>
-        <li><strong>No LSI trend.</strong> The queue logs FC, pH, temperature, and flow only — not alkalinity, calcium hardness, or CYA — so the saturation index is not computable from this data. LSI stays a point-in-time number in Pump Room.</li>
+        <li><strong>No LSI trend</strong> <em>(v1.0.0 — lifted in v1.1.0, see the update below).</em> The queue originally logged FC, pH, temperature, and flow only, so the saturation index was not computable from the trend data.</li>
         <li><strong><code>localStorage</code> is per-device.</strong> The dashboard shows the logging history of the device it runs on. The CSV export/import cycle is the merge path across devices — export from the tablet, import on the office machine.</li>
         <li>CSV dates in the queue's export carry no year (MM/DD); the importer assumes the current year and rolls a future-dated reading back one year. Multi-year archives should be imported in the year they were exported.</li>
         <li>It is a viewer, not a logger. Readings are captured in Reading Queue; this tool adds nothing to the record.</li>
       </ul>
 
+      <h2>Update: the saturation-index trend (v1.1.0)</h2>
+      <p>The original limitation above — that LSI wasn't computable from the trend data — is lifted. Reading Queue v1.1.0 [2] captures alkalinity, calcium hardness, and CYA, which together with the pH and temperature already logged are exactly the inputs the Langelier index needs. Chem Trends v1.1.0 adds a fifth chart: <strong>Saturation Index (LSI)</strong>, with a balanced compliance band of −0.3 to +0.3 and the usual red markers on corrosive or scale-forming excursions.</p>
+
+      <figure>
+        <img loading="lazy" src="/kimberlytravel/blog/img/chemtrends-lsi.png" alt="Chem Trends showing the new Saturation Index (LSI) chart with a balanced band and red out-of-band markers where a pH spike drove the index toward scaling, alongside the FC, pH, temperature, and flow charts">
+        <figcaption>The v1.1.0 LSI chart, between temperature and flow: the balanced −0.3…+0.3 band shaded, with red markers where a pH climb pushed the index scale-forming.</figcaption>
+      </figure>
+
+      <h3>The math, and why it isn't retyped</h3>
+      <p>The index is computed per reading with <code>calcLSI()</code> <strong>ported verbatim from Pump Room</strong> [3] — the same temperature-factor table, the same CYA-corrected carbonate alkalinity, the same TDS constant. A runtime parity test extracts Pump Room's own function and runs 34 input combinations through both, asserting identical output, so the trend line can never disagree with the point-in-time gauge. A reading contributes an LSI point only when it carries pH, temperature, calcium, and alkalinity; readings missing any of those simply don't plot on that one chart, and every other chart is unaffected.</p>
+      <h3>Compatibility</h3>
+      <p>The CSV importer reads columns by name, so it takes the queue's new <code>alkalinity_ppm</code> / <code>calcium_ppm</code> / <code>cya_ppm</code> columns when present and ignores their absence in older exports. The <code>LSI_BAND</code> constant and the ported block sit at the top of the script.</p>
+
       <section>
         <h2>References</h2>
         <ol>
           <li><a href="../../tools/chemtrends.html">Chem Trends Dashboard</a></li>
-          <li><a href="../../tools/readingqueue.html">Reading Queue</a> — the data source, and the origin of the CSV format this tool imports.</li>
-          <li><a href="../../tools/pumproom.html">Pump Room Chemistry Calculator</a> — shares the same pool volumes and FC/pH thresholds.</li>
+          <li><a href="../../tools/readingqueue.html">Reading Queue</a> — the data source (v1.1.0 adds the alkalinity/calcium/CYA capture), and the origin of the CSV format this tool imports.</li>
+          <li><a href="../../tools/pumproom.html">Pump Room Chemistry Calculator</a> — shares the pool volumes and FC/pH thresholds, and is the source of the ported <code>calcLSI()</code>.</li>
         </ol>
       </section>
     </article>
