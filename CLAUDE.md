@@ -17,4 +17,8 @@ site (`~/projects/mds08011.github.io`), and the two follow the same conventions 
   appears under her name.
 - **Text encoding.** The 2015 posts were double-encoded once (`â€™` for `’`), which was
   repaired on 2026-11-26. Keep files UTF-8 and keep their existing line endings when editing.
+- **Run `site-check` from the repo root before committing.** It guesses the `/kimberlytravel`
+  prefix from the folder name. Fix its errors.
+- **Tool posts stay off the blog index** (Malcolm, 2026-11-26). The tools are listed on
+  `tools/index.html`, and their posts stay at their URLs without a link from `blog/index.html`.
 - **Commits** are authored as `mds08011`, with no AI attribution, and wait for Malcolm's OK.
