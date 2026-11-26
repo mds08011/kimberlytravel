@@ -8,41 +8,29 @@ To maintain the site's simplicity, all updates are made manually using basic HTM
 
 ### Directory Organization
 
-Content is categorized into three primary folders:
+- `/blog/<YYYY-MM-DD>/`: one folder per post, with the post's photos beside it. The 2015 posts are from Peace Corps Mali. The 2026 posts each describe one of the tools.
+- `/blog/img/`: screenshots used by the 2026 tool posts.
+- `/tools/`: single-file tools (aquatics, knitting and crafts), listed on `/tools/index.html`.
+- `/travelmap/`: the travel map.
+- `cocktails.html`, `about.html`: standalone pages.
 
-- `/aquatics/`: For all YMCA, Aquatics Director, and Operational (SOP) content.
-- `/crafts/`: For knitting, crafting, and hobby-related posts.
-- `/travel/`: For travel logs, interactive map files, and trip summaries.
+The site is served from `https://mds08011.github.io/kimberlytravel/`, so root-relative links start with `/kimberlytravel/`.
 
 ### Creating a New Post / Page
 
-1. **Copy the Template**: Duplicate the `boilerplate.html` file into the appropriate directory (e.g., `/aquatics/new-sop.html`).
+1. **Copy the Template**: Duplicate `boilerplate.html` into a new dated folder under `/blog/`.
 2. **Update Meta Information**: Update the `<title>` tag and the `<h1>` to reflect the new content.
-3. **Write Content**: Fill in the `<main>` tag with standard HTML elements (`<p>`, `<ul>`, `<table>`). Use the `<details>` and `<summary>` tags for collapsable content like lengthy SOPs.
-4. **Link to Root**: Once the page is complete, add a list item with a link to this new file in the appropriate section of `/index.html` (e.g., under "Latest in Aquatics & Ops").
+3. **Write Content**: Fill in the `<main>` tag with standard HTML elements (`<p>`, `<ul>`, `<table>`). Use the `<details>` and `<summary>` tags for collapsible content like lengthy SOPs.
+4. **Photos**: Resize to 1280 px on the long edge at JPEG quality 75 and strip the metadata before committing, so the page loads on a slow connection.
+5. **Link It**: Add the post to `/blog/index.html`.
 
-### Updating the Interactive Travel Map
+The stylesheet is a local copy of sakura.css v1.5.1 at `/kimberlytravel/sakura.css` (MIT, by oxalorg), plus each page's `style.css`.
 
-The travel map utilizes GeoJSON for markers and routes.
+### The Travel Map
 
-1. **Update GeoJSON Data**: Add new coordinate features to the primary `KS_Map.geojson` file located in the repository.
-2. **Commit Changes**: Push the updated `.geojson` file to the `master` branch. The web map fetches the raw file directly.
-3. **Map Framework**: The map uses Leaflet/Mapbox with Bootstrap for a responsive template. No rebuild step is necessary—simply update the data file.
+`/travelmap/index.html` is a self-contained inline SVG world map, generated from `world-atlas-countries.geojson` in an equirectangular projection. It loads no tiles, libraries or external data. To change which places are shaded, edit the SVG in that page.
 
----
-
-### Additional Map Documentation
-
-Based on: https://github.com/bmcbride/geojson-share-maps
-
-- **Web Map**: https://mds08011.github.io/KimberlyTravel/?src=https://raw.githubusercontent.com/mds08011/KimberlyTravels/master/KS_Map.geojson
-- **Raw geojson**: https://raw.githubusercontent.com/mds08011/KimberlyTravel/master/KS_Map.geojson
-- **States**: https://mds08011.github.io/KimberlyTravel/?src=https://raw.githubusercontent.com/mds08011/KimberlyTravels/master/source-data/geojson/ne_10m_admin_1_states_provinces/KS_States.geojson
-
-**Features:**
-- Fullscreen mobile-friendly map template with responsive navbar and modal popups
-- Built on Bootstrap and Leaflet/Mapbox frameworks
-- Supports GeoJSON feature styling via simplestyle-spec
+The large GeoJSON files in `/travelmap/` (`kgs-world.geojson`, `world-atlas-countries.geojson`, `us-atlas-states.geojson`) are source data and are not loaded by the live page. The `leaflet-map-*` folders are the older Leaflet templates, based on https://github.com/bmcbride/geojson-share-maps.
 
 ### Other Resources
 
