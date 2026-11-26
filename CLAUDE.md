@@ -13,6 +13,7 @@ site (`~/projects/mds08011.github.io`), and the two follow the same conventions 
 - **The travel map** is an inline SVG in `travelmap/index.html`. The large GeoJSON files in
   `travelmap/` are source data that no live page loads. Don't wire them back into a page.
 - **Analytics** are GoatCounter at `ksultz.goatcounter.com`, separate from Malcolm's.
+  New pages copy the pinned snippet from `about.html` (`count.v5.js` with its SRI hash, the same version as Malcolm's site). The home page and 21 of the 33 posts have no counter yet.
 - **Kimberly writes the posts.** Ask Malcolm before publishing or rewriting anything that
   appears under her name.
 - **Text encoding.** The 2015 posts were double-encoded once (`â€™` for `’`), which was
